@@ -5,15 +5,13 @@ import { api } from '@/lib/api';
 import {
   Send,
   PanelRightOpen,
-  PanelRightClose,
   Mic,
   MicOff,
   Anchor,
   Bot,
-  User,
-  LogOut,
   Loader2,
 } from 'lucide-react';
+import { UserButton } from '@clerk/nextjs';
 
 interface ChatMessage {
   id: string;
@@ -147,13 +145,13 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
           >
             <PanelRightOpen className="w-5 h-5" />
           </button>
-          <button
-            onClick={onLogout}
-            className="p-2 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-white transition-colors"
-            title="Sign out"
-          >
-            <LogOut className="w-5 h-5" />
-          </button>
+          <UserButton 
+            appearance={{
+              elements: {
+                avatarBox: 'w-8 h-8',
+              },
+            }}
+          />
         </div>
       </header>
 
@@ -215,8 +213,8 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
               {msg.content}
             </div>
             {msg.role === 'founder' && (
-              <div className="w-8 h-8 rounded-lg bg-dark-700 flex items-center justify-center flex-shrink-0 mt-1">
-                <User className="w-4 h-4 text-dark-400" />
+              <div className="w-8 h-8 rounded-lg bg-helm-600 flex items-center justify-center flex-shrink-0 mt-1">
+                <span className="text-white text-xs font-medium">You</span>
               </div>
             )}
           </div>
