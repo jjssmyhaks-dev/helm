@@ -1,13 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import Redis from 'ioredis';
 import { PrismaService } from '../database/prisma.service.js';
 
 interface BudgetConfig {
-  /** Maximum tokens per window */
   maxTokens: number;
-  /** Window duration in seconds */
   windowSeconds: number;
-  /** Cost per 1K tokens (for tracking spend) */
   costPer1kTokens: number;
 }
 
@@ -28,12 +24,11 @@ export interface BudgetStatus {
   resetsAt: Date;
 }
 
-/** Default budgets — founder-level daily limits */
 const DEFAULT_BUDGETS: Record<string, BudgetConfig> = {
   'tokens:founder:daily': {
     maxTokens: 500_000,
     windowSeconds: 86400,
-    costPer1kTokens: 0.003, // Claude Sonnet average
+    costPer1kTokens: 0.003,
   },
   'tokens:founder:hourly': {
     maxTokens: 50_000,
@@ -52,81 +47,81 @@ const DEFAULT_BUDGETS: Record<string, BudgetConfig> = {
   },
 };
 
+interface BudgetEntry {
+  used: number;
+  windowStart: number;
+}
+
 @Injectable()
 export class TokenBudgetService {
   private readonly logger = new Logger(TokenBudgetService.name);
-  private redis: Redis;
+  private budgets = new Map<string, BudgetEntry>();
 
-  constructor(
-    private prisma: PrismaService,
-  ) {
-    const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-    this.redis = new Redis(redisUrl);
+  constructor(private prisma: PrismaService) {}
+
+  private getBudget(key: string): BudgetEntry {
+    const config = this.getBudgetConfig(key);
+    const existing = this.budgets.get(key);
+    const now = Date.now();
+
+    if (!existing || now - existing.windowStart > config.windowSeconds * 1000) {
+      const entry = { used: 0, windowStart: now };
+      this.budgets.set(key, entry);
+      return entry;
+    }
+    return existing;
   }
 
-  /**
-   * Check if an agent has remaining token budget before making an LLM call.
-   */
   async checkBudget(
     founderId: string,
     layer: string,
     agentId: string,
     estimatedTokens: number = 2000,
   ): Promise<{ allowed: boolean; reason?: string; status: BudgetStatus }> {
-    // Check founder daily budget
-    const founderDaily = await this.getBudgetStatus(`tokens:founder:daily:${founderId}`);
-    if (founderDaily.used + estimatedTokens > founderDaily.limit) {
+    const founderDaily = this.getBudget(`tokens:founder:daily:${founderId}`);
+    if (founderDaily.used + estimatedTokens > DEFAULT_BUDGETS['tokens:founder:daily'].maxTokens) {
       return {
         allowed: false,
         reason: 'Founder daily token budget exhausted',
-        status: founderDaily,
+        status: this.toStatus(`tokens:founder:daily:${founderId}`),
       };
     }
 
-    // Check founder hourly budget
-    const founderHourly = await this.getBudgetStatus(`tokens:founder:hourly:${founderId}`);
-    if (founderHourly.used + estimatedTokens > founderHourly.limit) {
+    const founderHourly = this.getBudget(`tokens:founder:hourly:${founderId}`);
+    if (founderHourly.used + estimatedTokens > DEFAULT_BUDGETS['tokens:founder:hourly'].maxTokens) {
       return {
         allowed: false,
         reason: 'Founder hourly token limit reached',
-        status: founderHourly,
+        status: this.toStatus(`tokens:founder:hourly:${founderId}`),
       };
     }
 
-    // Check layer daily budget
-    const layerDaily = await this.getBudgetStatus(`tokens:layer:daily:${founderId}:${layer}`);
-    if (layerDaily.used + estimatedTokens > layerDaily.limit) {
+    const layerDaily = this.getBudget(`tokens:layer:daily:${founderId}:${layer}`);
+    if (layerDaily.used + estimatedTokens > DEFAULT_BUDGETS['tokens:layer:daily'].maxTokens) {
       return {
         allowed: false,
         reason: `Layer "${layer}" daily token budget exhausted`,
-        status: layerDaily,
+        status: this.toStatus(`tokens:layer:daily:${founderId}:${layer}`),
       };
     }
 
-    // Check agent daily budget
-    const agentDaily = await this.getBudgetStatus(`tokens:agent:daily:${agentId}`);
-    if (agentDaily.used + estimatedTokens > agentDaily.limit) {
+    const agentDaily = this.getBudget(`tokens:agent:daily:${agentId}`);
+    if (agentDaily.used + estimatedTokens > DEFAULT_BUDGETS['tokens:agent:daily'].maxTokens) {
       return {
         allowed: false,
         reason: 'Agent daily token budget exhausted',
-        status: agentDaily,
+        status: this.toStatus(`tokens:agent:daily:${agentId}`),
       };
     }
 
     return {
       allowed: true,
-      status: founderDaily,
+      status: this.toStatus(`tokens:founder:daily:${founderId}`),
     };
   }
 
-  /**
-   * Record token usage after an LLM call completes.
-   */
   async recordUsage(founderId: string, usage: TokenUsage): Promise<void> {
     const totalTokens = usage.inputTokens + usage.outputTokens;
-    const now = Date.now();
-
-    // Record to all relevant budget counters
     const keys = [
       `tokens:founder:daily:${founderId}`,
       `tokens:founder:hourly:${founderId}`,
@@ -134,15 +129,11 @@ export class TokenBudgetService {
       ...(usage.agentId ? [`tokens:agent:daily:${usage.agentId}`] : []),
     ];
 
-    const pipeline = this.redis.pipeline();
     for (const key of keys) {
-      const config = this.getBudgetConfig(key);
-      pipeline.incrby(key, totalTokens);
-      pipeline.expire(key, config.windowSeconds);
+      const entry = this.getBudget(key);
+      entry.used += totalTokens;
     }
-    await pipeline.exec();
 
-    // Persist to activity log for audit trail
     await this.prisma.activityLogEntry.create({
       data: {
         founderId,
@@ -160,50 +151,39 @@ export class TokenBudgetService {
       },
     });
 
-    // Log warning if approaching budget limits
-    const founderDaily = await this.getBudgetStatus(`tokens:founder:daily:${founderId}`);
-    const usagePercent = (founderDaily.used / founderDaily.limit) * 100;
+    const founderDaily = this.getBudget(`tokens:founder:daily:${founderId}`);
+    const usagePercent = (founderDaily.used / DEFAULT_BUDGETS['tokens:founder:daily'].maxTokens) * 100;
     if (usagePercent > 80) {
       this.logger.warn(
-        `Founder ${founderId} token usage at ${usagePercent.toFixed(0)}% of daily budget (${founderDaily.used}/${founderDaily.limit})`,
+        `Founder ${founderId} token usage at ${usagePercent.toFixed(0)}% of daily budget`,
       );
     }
   }
 
-  /**
-   * Get budget status for a specific key.
-   */
-  async getBudgetStatus(key: string): Promise<BudgetStatus> {
-    const config = this.getBudgetConfig(key);
-    const used = parseInt((await this.redis.get(key)) || '0', 10);
-    const now = Date.now();
-    const ttl = await this.redis.ttl(key);
-
+  async getAllBudgets(founderId: string): Promise<Record<string, BudgetStatus>> {
     return {
-      used,
-      limit: config.maxTokens,
-      remaining: Math.max(0, config.maxTokens - used),
-      estimatedCostUsd: (used / 1000) * config.costPer1kTokens,
-      resetsAt: new Date(now + (ttl > 0 ? ttl * 1000 : config.windowSeconds * 1000)),
+      daily: this.toStatus(`tokens:founder:daily:${founderId}`),
+      hourly: this.toStatus(`tokens:founder:hourly:${founderId}`),
+      research: this.toStatus(`tokens:layer:daily:${founderId}:RESEARCH`),
+      marketing: this.toStatus(`tokens:layer:daily:${founderId}:MARKETING`),
+      operations: this.toStatus(`tokens:layer:daily:${founderId}:OPERATIONS`),
+      finance: this.toStatus(`tokens:layer:daily:${founderId}:FINANCE`),
     };
   }
 
-  /**
-   * Get all budget statuses for a founder (for dashboard display).
-   */
-  async getAllBudgets(founderId: string): Promise<Record<string, BudgetStatus>> {
+  private toStatus(key: string): BudgetStatus {
+    const config = this.getBudgetConfig(key);
+    const entry = this.getBudget(key);
     return {
-      daily: await this.getBudgetStatus(`tokens:founder:daily:${founderId}`),
-      hourly: await this.getBudgetStatus(`tokens:founder:hourly:${founderId}`),
-      research: await this.getBudgetStatus(`tokens:layer:daily:${founderId}:RESEARCH`),
-      marketing: await this.getBudgetStatus(`tokens:layer:daily:${founderId}:MARKETING`),
-      operations: await this.getBudgetStatus(`tokens:layer:daily:${founderId}:OPERATIONS`),
-      finance: await this.getBudgetStatus(`tokens:layer:daily:${founderId}:FINANCE`),
+      used: entry.used,
+      limit: config.maxTokens,
+      remaining: Math.max(0, config.maxTokens - entry.used),
+      estimatedCostUsd: (entry.used / 1000) * config.costPer1kTokens,
+      resetsAt: new Date(entry.windowStart + config.windowSeconds * 1000),
     };
   }
 
   private getBudgetConfig(key: string): BudgetConfig {
-    // Match key pattern to find the right config
     if (key.includes('hourly')) return DEFAULT_BUDGETS['tokens:founder:hourly'];
     if (key.includes('layer:')) return DEFAULT_BUDGETS['tokens:layer:daily'];
     if (key.includes('agent:')) return DEFAULT_BUDGETS['tokens:agent:daily'];

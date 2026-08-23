@@ -1,189 +1,149 @@
-// ============================================================================
-// Helm — Prisma Schema
-// AI Operating System for Solo Founders
-// ============================================================================
-
-generator client {
-  provider = "prisma-client-js"
-}
-
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
-// ---------------------------------------------------------------------------
-// Enums
-// ---------------------------------------------------------------------------
-
-enum RiskTier {
-  AUTO_EXECUTE    @map("auto_execute")     // Tier 1
-  NOTIFY_AND_ACT  @map("notify_and_act")   // Tier 2
-  APPROVAL_REQUIRED @map("approval_required") // Tier 3
+generator client {
+  provider = "prisma-client-js"
 }
 
-enum LayerName {
-  RESEARCH    @map("research")
-  MARKETING   @map("marketing")
-  OPERATIONS  @map("operations")
-  FINANCE     @map("finance")
-}
-
-enum AgentType {
-  GLOBAL_ORCHestrator  @map("global_orchestrator")
-  LAYER_ORCHESTRATOR   @map("layer_orchestrator")
-  SUB_AGENT            @map("sub_agent")
+enum AgentLayer {
+  RESEARCH
+  MARKETING
+  OPERATIONS
+  FINANCE
 }
 
 enum AgentStatus {
-  IDLE              @map("idle")
-  WORKING           @map("working")
-  WAITING_APPROVAL  @map("waiting_approval")
-  ERROR             @map("error")
-  OFFLINE           @map("offline")
+  IDLE
+  WORKING
+  WAITING_APPROVAL
+  ERROR
 }
 
 enum TaskStatus {
-  PENDING           @map("pending")
-  IN_PROGRESS       @map("in_progress")
-  WAITING_APPROVAL  @map("waiting_approval")
-  COMPLETED         @map("completed")
-  FAILED            @map("failed")
-  CANCELLED         @map("cancelled")
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  CANCELLED
+  AWAITING_APPROVAL
+}
+
+enum RiskTier {
+  AUTO_EXECUTE
+  NOTIFY_AND_ACT
+  APPROVAL_REQUIRED
+}
+
+enum SignalPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
 }
 
 enum ApprovalStatus {
-  PENDING   @map("pending")
-  APPROVED  @map("approved")
-  REJECTED  @map("rejected")
-  EDITED    @map("edited")
-  EXPIRED   @map("expired")
+  PENDING
+  APPROVED
+  REJECTED
+  EDITED
+  EXPIRED
 }
-
-enum AuthType {
-  OAUTH    @map("oauth")
-  API_KEY  @map("api_key")
-}
-
-enum ConnectorAuthStatus {
-  NOT_CONNECTED  @map("not_connected")
-  CONNECTED      @map("connected")
-  NEEDS_RE_AUTH  @map("needs_re_auth")
-  ERROR          @map("error")
-}
-
-enum ChatRole {
-  FOUNDER  @map("founder")
-  AGENT    @map("agent")
-  SYSTEM   @map("system")
-}
-
-// ---------------------------------------------------------------------------
-// Core Models
-// ---------------------------------------------------------------------------
 
 model Founder {
-  id                  String   @id @default(uuid())
-  email               String   @unique
-  passwordHash        String   @map("password_hash")
-  name                String
-  businessName        String   @map("business_name")
-  businessDescription String   @default("") @map("business_description")
+  id                String   @id
+  clerkUserId       String   @unique @map("clerk_user_id")
+  email             String
+  name              String?
+  businessName      String?  @map("business_name")
+  businessType      String?  @map("business_type")
+  industry          String?
+  onboardingComplete Boolean @default(false) @map("onboarding_complete")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
 
-  // Autonomy settings stored as JSON
-  autonomySettings    Json     @default("{}") @map("autonomy_settings")
-
-  createdAt           DateTime @default(now()) @map("created_at")
-  updatedAt           DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  agents              Agent[]
-  tasks               Task[]
-  events              EventSignal[]
-  eventSubscriptions  EventSubscription[]
-  approvals           Approval[]
-  connectors          Connector[]
-  contextNotes        ContextNote[]
-  activityLog         ActivityLogEntry[]
-  chatSessions        ChatSession[]
+  agents            Agent[]
+  tasks             Task[]
+  events            EventSignal[]
+  approvals         Approval[]
+  connectors        Connector[]
+  contextNotes      ContextNote[]
+  activityLogs      ActivityLogEntry[]
+  notifications     Notification[]
+  chatSessions      ChatSession[]
+  context           FounderContext?
 
   @@map("founders")
 }
 
+model FounderContext {
+  id          String   @id @default(uuid())
+  founderId   String   @unique @map("founder_id")
+  founder     Founder  @relation(fields: [founderId], references: [id], onDelete: Cascade)
+  goals       Json     @default("[]")
+  decisions   Json     @default("[]")
+  facts       Json     @default("[]")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("founder_context")
+}
+
 model Agent {
-  id          String      @id @default(uuid())
-  name        String
-  description String      @default("")
-  type        AgentType   @map("type")
-  layer       LayerName?  @map("layer")
-  status      AgentStatus @default(IDLE) @map("status")
-  config      Json        @default("{}")
+  id              String      @id @default(uuid())
+  founderId       String      @map("founder_id")
+  founder         Founder     @relation(fields: [founderId], references: [id], onDelete: Cascade)
+  name            String
+  layer           AgentLayer
+  description     String?
+  role            String
+  status          AgentStatus @default(IDLE)
+  config          Json        @default("{}")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
 
-  founderId   String      @map("founder_id")
-  founder     Founder     @relation(fields: [founderId], references: [id], onDelete: Cascade)
+  tasks           Task[]
+  activityLogs    ActivityLogEntry[]
+  publishedEvents EventSignal[] @relation("PublisherAgent")
 
-  createdAt   DateTime    @default(now()) @map("created_at")
-  updatedAt   DateTime    @updatedAt @map("updated_at")
-
-  // Relations
-  assignedTasks      Task[]              @relation("AssignedAgent")
-  publishedEvents    EventSignal[]       @relation("PublisherAgent")
-  subscriptions      EventSubscription[]
-  approvals          Approval[]
-  activityLog        ActivityLogEntry[]
-  chatMessages       ChatMessage[]       @relation("AgentMessages")
-
-  @@index([founderId, layer])
-  @@index([founderId, status])
   @@map("agents")
 }
 
 model Task {
   id              String     @id @default(uuid())
-  title           String
-  description     String     @default("")
-  layer           LayerName  @map("layer")
-  status          TaskStatus @default(PENDING) @map("status")
-  riskTier        RiskTier   @map("risk_tier")
-  result          Json?
-  error           String?
-
-  assignedAgentId String     @map("assigned_agent_id")
-  assignedAgent   Agent      @relation("AssignedAgent", fields: [assignedAgentId], references: [id])
-
-  parentTaskId    String?    @map("parent_task_id")
-  parentTask      Task?      @relation("SubTasks", fields: [parentTaskId], references: [id])
-  subTasks        Task[]     @relation("SubTasks")
-
   founderId       String     @map("founder_id")
   founder         Founder    @relation(fields: [founderId], references: [id], onDelete: Cascade)
-
+  assignedAgentId String?    @map("assigned_agent_id")
+  assignedAgent   Agent?     @relation(fields: [assignedAgentId], references: [id])
+  title           String
+  description     String?
+  layer           AgentLayer
+  status          TaskStatus @default(PENDING)
+  riskTier        RiskTier   @default(AUTO_EXECUTE)
+  result          Json?
+  error           String?
+  metadata        Json        @default("{}")
+  parentId        String?    @map("parent_id")
   createdAt       DateTime   @default(now()) @map("created_at")
   updatedAt       DateTime   @updatedAt @map("updated_at")
   completedAt     DateTime?  @map("completed_at")
 
-  // Relations
-  approval        Approval?
-
-  @@index([founderId, status])
-  @@index([founderId, layer])
-  @@index([assignedAgentId, status])
   @@map("tasks")
 }
 
 model EventSignal {
-  id               String     @id @default(uuid())
-  type             String     @map("signal_type")
-  payload          Json       @default("{}")
+  id               String   @id @default(uuid())
+  type             String   @map("signal_type")
+  payload          Json     @default("{}")
 
-  publisherAgentId String     @map("publisher_agent_id")
-  publisherAgent   Agent      @relation("PublisherAgent", fields: [publisherAgentId], references: [id])
+  publisherAgentId String   @map("publisher_agent_id")
+  publisherAgent   Agent    @relation("PublisherAgent", fields: [publisherAgentId], references: [id])
 
-  founderId        String     @map("founder_id")
-  founder          Founder    @relation(fields: [founderId], references: [id], onDelete: Cascade)
+  founderId        String   @map("founder_id")
+  founder          Founder  @relation(fields: [founderId], references: [id], onDelete: Cascade)
 
-  publishedAt      DateTime   @default(now()) @map("published_at")
+  publishedAt      DateTime @default(now()) @map("published_at")
 
   @@index([founderId, type])
   @@index([publishedAt])
@@ -193,137 +153,122 @@ model EventSignal {
 model EventSubscription {
   id         String   @id @default(uuid())
   signalType String   @map("signal_type")
-
   agentId    String   @map("agent_id")
-  agent      Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
-
   founderId  String   @map("founder_id")
-  founder    Founder  @relation(fields: [founderId], references: [id], onDelete: Cascade)
-
+  active     Boolean  @default(true)
   createdAt  DateTime @default(now()) @map("created_at")
 
-  @@unique([agentId, signalType, founderId])
-  @@index([signalType])
+  @@unique([signalType, agentId])
   @@map("event_subscriptions")
 }
 
 model Approval {
-  id                String         @id @default(uuid())
-  actionDescription String         @map("action_description")
-  actionPayload     Json           @default("{}") @map("action_payload")
-  reasoning         String         @default("")
-  riskTier          RiskTier       @map("risk_tier")
-  status            ApprovalStatus @default(PENDING) @map("status")
-  resolutionNote    String?        @map("resolution_note")
-  editedPayload     Json?          @map("edited_payload")
-
-  taskId            String         @unique @map("task_id")
-  task              Task           @relation(fields: [taskId], references: [id], onDelete: Cascade)
-
-  agentId           String         @map("agent_id")
-  agent             Agent          @relation(fields: [agentId], references: [id])
-
-  founderId         String         @map("founder_id")
-  founder           Founder        @relation(fields: [founderId], references: [id], onDelete: Cascade)
-
-  createdAt         DateTime       @default(now()) @map("created_at")
-  resolvedAt        DateTime?      @map("resolved_at")
+  id          String         @id @default(uuid())
+  founderId   String         @map("founder_id")
+  founder     Founder        @relation(fields: [founderId], references: [id], onDelete: Cascade)
+  agentId     String         @map("agent_id")
+  taskId      String?        @map("task_id")
+  actionType  String         @map("action_type")
+  actionData  Json           @map("action_data")
+  reasoning   String?
+  riskTier    RiskTier       @default(APPROVAL_REQUIRED)
+  status      ApprovalStatus @default(PENDING)
+  decision    String?
+  edits       Json?
+  createdAt   DateTime       @default(now()) @map("created_at")
+  decidedAt   DateTime?      @map("decided_at")
+  expiresAt   DateTime?      @map("expires_at")
 
   @@index([founderId, status])
-  @@index([status, createdAt])
   @@map("approvals")
 }
 
 model Connector {
-  id                  String             @id @default(uuid())
-  name                String             @unique
-  displayName         String             @map("display_name")
-  description         String             @default("")
-  mcpServerEndpoint   String             @map("mcp_server_endpoint")
-  authType            AuthType           @map("auth_type")
-  authStatus          ConnectorAuthStatus @default(NOT_CONNECTED) @map("auth_status")
-  encryptedCredentials String?           @map("encrypted_credentials")
-  scopes              String[]           @default([])
-  usedByLayers        LayerName[]        @default([]) @map("used_by_layers")
-  lastSuccessfulCall  DateTime?          @map("last_successful_call")
-  config              Json               @default("{}")
+  id              String   @id @default(uuid())
+  founderId       String   @map("founder_id")
+  founder         Founder  @relation(fields: [founderId], references: [id], onDelete: Cascade)
+  name            String
+  displayName     String   @map("display_name")
+  status          String   @default("disconnected")
+  authType        String?  @map("auth_type")
+  scopes          Json     @default("[]")
+  lastHealthCheck DateTime? @map("last_health_check")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
-  founderId           String             @map("founder_id")
-  founder             Founder            @relation(fields: [founderId], references: [id], onDelete: Cascade)
-
-  createdAt           DateTime           @default(now()) @map("created_at")
-  updatedAt           DateTime           @updatedAt @map("updated_at")
-
-  @@index([founderId, name])
+  @@unique([founderId, name])
   @@map("connectors")
 }
 
 model ContextNote {
-  id        String   @id @default(uuid())
-  key       String
-  value     String
-  tags      String[] @default([])
+  id          String   @id @default(uuid())
+  founderId   String   @map("founder_id")
+  founder     Founder  @relation(fields: [founderId], references: [id], onDelete: Cascade)
+  key         String
+  value       Json
+  category    String   @default("general")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
-  founderId String   @map("founder_id")
-  founder   Founder  @relation(fields: [founderId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  @@unique([founderId, key])
-  @@index([founderId, tags])
+  @@index([founderId, key])
   @@map("context_notes")
 }
 
 model ActivityLogEntry {
-  id        String   @id @default(uuid())
-  action    String
-  details   Json     @default("{}")
-  riskTier  RiskTier @map("risk_tier")
-
-  founderId String   @map("founder_id")
-  founder   Founder  @relation(fields: [founderId], references: [id], onDelete: Cascade)
-
-  agentId   String   @map("agent_id")
-  agent     Agent    @relation(fields: [agentId], references: [id])
-
-  createdAt DateTime @default(now()) @map("created_at")
+  id          String   @id @default(uuid())
+  founderId   String   @map("founder_id")
+  founder     Founder  @relation(fields: [founderId], references: [id], onDelete: Cascade)
+  agentId     String   @map("agent_id")
+  agent       Agent?   @relation(fields: [agentId], references: [id])
+  action      String
+  details     Json     @default("{}")
+  riskTier    RiskTier @default(AUTO_EXECUTE)
+  createdAt   DateTime @default(now()) @map("created_at")
 
   @@index([founderId, createdAt])
-  @@index([agentId, createdAt])
+  @@index([agentId])
   @@map("activity_log")
 }
 
+model Notification {
+  id          String   @id @default(uuid())
+  founderId   String   @map("founder_id")
+  founder     Founder  @relation(fields: [founderId], references: [id], onDelete: Cascade)
+  type        String
+  title       String
+  message     String
+  priority    String   @default("normal")
+  read        Boolean  @default(false)
+  data        Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([founderId, read])
+  @@map("notifications")
+}
+
 model ChatSession {
-  id        String   @id @default(uuid())
-  title     String?
+  id          String   @id @default(uuid())
+  founderId   String   @map("founder_id")
+  founder     Founder  @relation(fields: [founderId], references: [id], onDelete: Cascade)
+  title       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
-  founderId String   @map("founder_id")
-  founder   Founder  @relation(fields: [founderId], references: [id], onDelete: Cascade)
+  messages    ChatMessage[]
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-
-  messages  ChatMessage[]
-
-  @@index([founderId, updatedAt])
+  @@index([founderId])
   @@map("chat_sessions")
 }
 
 model ChatMessage {
-  id        String   @id @default(uuid())
-  role      ChatRole @map("role")
-  content   String
-  metadata  Json     @default("{}")
+  id          String   @id @default(uuid())
+  sessionId   String   @map("session_id")
+  session     ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role        String
+  content     String
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
 
-  sessionId String   @map("session_id")
-  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-
-  agentId   String?  @map("agent_id")
-  agent     Agent?   @relation("AgentMessages", fields: [agentId], references: [id])
-
-  createdAt DateTime @default(now()) @map("created_at")
-
-  @@index([sessionId, createdAt])
+  @@index([sessionId])
   @@map("chat_messages")
 }

@@ -1,34 +1,18 @@
-import { Controller, Post, Body, Get, UseGuards, Request } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { AuthGuard } from '@nestjs/passport';
+import { Controller, Post, Body, Get, Param, HttpException, HttpStatus } from '@nestjs/common';
+import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { AuthService } from './auth.service.js';
-import { IsEmail, IsString, MinLength, IsOptional } from 'class-validator';
+import { IsString, IsEmail, IsOptional } from 'class-validator';
 
-class SignupDto {
+class SyncUserDto {
+  @IsString()
+  clerkUserId!: string;
+
   @IsEmail()
   email!: string;
-
-  @IsString()
-  @MinLength(8)
-  password!: string;
-
-  @IsString()
-  name!: string;
-
-  @IsString()
-  businessName!: string;
 
   @IsString()
   @IsOptional()
-  businessDescription?: string;
-}
-
-class LoginDto {
-  @IsEmail()
-  email!: string;
-
-  @IsString()
-  password!: string;
+  name?: string;
 }
 
 @ApiTags('Auth')
@@ -36,23 +20,23 @@ class LoginDto {
 export class AuthController {
   constructor(private authService: AuthService) {}
 
-  @Post('signup')
-  @ApiOperation({ summary: 'Create a new founder account' })
-  async signup(@Body() dto: SignupDto) {
-    return this.authService.signup(dto);
+  @Post('sync')
+  @ApiOperation({ summary: 'Sync Clerk user to database' })
+  async syncUser(@Body() dto: SyncUserDto) {
+    return this.authService.syncUser({
+      id: dto.clerkUserId,
+      email: dto.email,
+      name: dto.name,
+    });
   }
 
-  @Post('login')
-  @ApiOperation({ summary: 'Login with email and password' })
-  async login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
-  }
-
-  @Get('me')
-  @UseGuards(AuthGuard('jwt'))
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get current founder profile' })
-  async me(@Request() req: any) {
-    return req.user;
+  @Get(':userId')
+  @ApiOperation({ summary: 'Get user profile by Clerk user ID' })
+  async getUser(@Param('userId') userId: string) {
+    const founder = await this.authService.getFounder(userId);
+    if (!founder) {
+      throw new HttpException('User not found', HttpStatus.NOT_FOUND);
+    }
+    return founder;
   }
 }

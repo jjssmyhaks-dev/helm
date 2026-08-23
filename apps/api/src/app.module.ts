@@ -20,6 +20,7 @@ import { SchedulerModule } from './scheduler/scheduler.module.js';
 import { NotificationModule } from './notification/notification.module.js';
 import { DashboardModule } from './dashboard/dashboard.module.js';
 import { HealthController } from './health.controller.js';
+import { IntelligenceModule } from './intelligence/intelligence.module.js';
 
 @Module({
   controllers: [HealthController],
@@ -44,6 +45,7 @@ import { HealthController } from './health.controller.js';
     ContextModule,
     OrchestratorModule,
     ActivityModule,
+    IntelligenceModule,
   ],
 })
 export class AppModule {}

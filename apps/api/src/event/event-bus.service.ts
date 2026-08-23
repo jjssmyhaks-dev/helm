@@ -1,157 +1,134 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import Redis from 'ioredis';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service.js';
-import { Prisma } from '@prisma/client';
 
-export interface SignalPayload {
+export interface Signal {
+  id: string;
   type: string;
-  publisherAgentId: string;
-  founderId: string;
-  payload: Record<string, unknown>;
+  publisherAgentId?: string;
+  founderId?: string;
+  payload: Record<string, any>;
+  timestamp: Date;
 }
 
-export type SignalHandler = (signal: SignalPayload) => Promise<void>;
+export type SignalHandler = (signal: Signal) => void | Promise<void>;
 
 @Injectable()
-export class EventBusService implements OnModuleInit, OnModuleDestroy {
+export class EventBusService {
   private readonly logger = new Logger(EventBusService.name);
-  private pubClient!: Redis;
-  private subClient!: Redis;
   private handlers = new Map<string, SignalHandler[]>();
+  private globalHandlers: SignalHandler[] = [];
 
-  constructor(
-    private prisma: PrismaService,
-    @InjectQueue('signal-processing') private signalQueue: Queue,
-  ) {}
+  constructor(private prisma: PrismaService) {}
 
-  onModuleInit() {
-    const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-    this.pubClient = new Redis(redisUrl);
-    this.subClient = new Redis(redisUrl);
+  /**
+   * Publish a signal to all subscribers.
+   */
+  async publish(signal: Omit<Signal, 'id' | 'timestamp'>): Promise<Signal> {
+    const fullSignal: Signal = {
+      ...signal,
+      id: `sig_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      timestamp: new Date(),
+    };
 
-    this.subClient.on('message', async (channel, message) => {
+    this.logger.log(`Signal published: ${signal.type}`);
+
+    // Persist to database (only if required fields are present)
+    if (signal.founderId && signal.publisherAgentId) {
       try {
-        const signal: SignalPayload = JSON.parse(message);
-        const channelHandlers = this.handlers.get(channel) || [];
-        await Promise.allSettled(channelHandlers.map((h) => h(signal)));
+        await this.prisma.eventSignal.create({
+          data: {
+            type: signal.type,
+            publisherAgentId: signal.publisherAgentId,
+            founderId: signal.founderId,
+            payload: signal.payload,
+          },
+        });
       } catch (err) {
-        this.logger.error(`Error handling signal on ${channel}:`, err);
+        this.logger.warn(`Failed to persist signal: ${err}`);
       }
-    });
+    }
 
-    this.logger.log('Event Bus connected to Redis');
-  }
+    // Dispatch to type-specific handlers
+    const typeHandlers = this.handlers.get(signal.type) || [];
+    for (const handler of typeHandlers) {
+      try {
+        await handler(fullSignal);
+      } catch (err) {
+        this.logger.error(`Handler error for signal ${signal.type}: ${err}`);
+      }
+    }
 
-  onModuleDestroy() {
-    this.pubClient?.disconnect();
-    this.subClient?.disconnect();
-  }
+    // Dispatch to global handlers
+    for (const handler of this.globalHandlers) {
+      try {
+        await handler(fullSignal);
+      } catch (err) {
+        this.logger.error(`Global handler error for signal ${signal.type}: ${err}`);
+      }
+    }
 
-  /**
-   * Publish a signal to the event bus.
-   * Persists to DB for audit trail and notifies all subscribers.
-   */
-  async publish(signal: SignalPayload): Promise<void> {
-    // Persist to database for audit trail
-    await this.prisma.eventSignal.create({
-      data: {
-        type: signal.type,
-        publisherAgentId: signal.publisherAgentId,
-        founderId: signal.founderId,
-        payload: signal.payload as unknown as Prisma.InputJsonValue,
-      },
-    });
-
-    // Publish to Redis for real-time delivery
-    const channel = this.channelName(signal.founderId, signal.type);
-    await this.pubClient.publish(channel, JSON.stringify(signal));
-
-    // Also publish to founder-level wildcard channel for global orchestrator
-    const wildcardChannel = `helm:${signal.founderId}:*`;
-    await this.pubClient.publish(wildcardChannel, JSON.stringify(signal));
-
-    // Enqueue to BullMQ for durable processing with retry
-    // This ensures signals survive server restarts and are retried on failure
-    await this.signalQueue.add(
-      `signal-${signal.type}`,
-      {
-        type: signal.type,
-        publisherAgentId: signal.publisherAgentId,
-        founderId: signal.founderId,
-        payload: signal.payload,
-      },
-      {
-        jobId: `sig-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        priority: this.getSignalPriority(signal.type),
-      },
-    );
-
-    this.logger.debug(`Published signal: ${signal.type} from agent ${signal.publisherAgentId}`);
+    return fullSignal;
   }
 
   /**
-   * Subscribe an agent to a signal type.
-   * Uses Redis pub/sub for real-time delivery.
+   * Subscribe to specific signal types.
    */
-  async subscribe(
-    founderId: string,
-    agentId: string,
-    signalType: string,
-    handler: SignalHandler,
-  ): Promise<void> {
-    const channel = this.channelName(founderId, signalType);
+  subscribe(type: string, handler: SignalHandler): () => void {
+    if (!this.handlers.has(type)) {
+      this.handlers.set(type, []);
+    }
+    this.handlers.get(type)!.push(handler);
+    this.logger.log(`Subscribed to signal: ${type}`);
 
-    // Register in-memory handler
-    const existing = this.handlers.get(channel) || [];
-    existing.push(handler);
-    this.handlers.set(channel, existing);
-
-    // Subscribe to Redis channel (idempotent)
-    await this.subClient.subscribe(channel);
-
-    this.logger.debug(`Agent ${agentId} subscribed to ${signalType}`);
+    // Return unsubscribe function
+    return () => {
+      const handlers = this.handlers.get(type);
+      if (handlers) {
+        const idx = handlers.indexOf(handler);
+        if (idx > -1) handlers.splice(idx, 1);
+      }
+    };
   }
 
   /**
-   * Get all subscribers for a given signal type (for debug/admin).
+   * Subscribe to all signals (global handler).
    */
-  async getSubscribers(founderId: string, signalType: string) {
-    return this.prisma.eventSubscription.findMany({
-      where: { founderId, signalType },
-      include: { agent: { select: { id: true, name: true, layer: true } } },
-    });
+  subscribeAll(handler: SignalHandler): () => void {
+    this.globalHandlers.push(handler);
+    return () => {
+      const idx = this.globalHandlers.indexOf(handler);
+      if (idx > -1) this.globalHandlers.splice(idx, 1);
+    };
   }
 
   /**
-   * Get recent events for a founder (activity feed).
+   * Get active subscriptions for debugging.
    */
-  async getRecentEvents(founderId: string, limit = 50) {
+  getSubscriptions(): Record<string, number> {
+    const result: Record<string, number> = {};
+    for (const [type, handlers] of this.handlers) {
+      result[type] = handlers.length;
+    }
+    result['*'] = this.globalHandlers.length;
+    return result;
+  }
+
+  /**
+   * Get recent signals for a founder.
+   */
+  async getRecentEvents(founderId: string, limit = 50): Promise<any[]> {
     return this.prisma.eventSignal.findMany({
       where: { founderId },
-      include: { publisherAgent: { select: { id: true, name: true, layer: true } } },
       orderBy: { publishedAt: 'desc' },
       take: limit,
     });
   }
 
-  private channelName(founderId: string, signalType: string): string {
-    return `helm:${founderId}:${signalType}`;
-  }
-
   /**
-   * Assign priority to signals — financial and urgent signals get higher priority.
-   * Lower number = higher priority in BullMQ.
+   * Get subscribers for a signal type.
    */
-  private getSignalPriority(signalType: string): number {
-    // High priority: financial risks, delivery delays
-    if (signalType.startsWith('cashflow.') || signalType === 'delivery.delayed') return 1;
-    // Medium-high: budget constraints, expense spikes
-    if (signalType.includes('budget') || signalType.includes('expense')) return 2;
-    // Medium: operational signals
-    if (signalType.startsWith('operations.') || signalType.startsWith('quality.')) return 3;
-    // Normal: research and marketing signals
-    return 5;
+  getSubscribers(_founderId: string, signalType: string): { type: string; handlerCount: number }[] {
+    const handlers = this.handlers.get(signalType) || [];
+    return [{ type: signalType, handlerCount: handlers.length }];
   }
 }
