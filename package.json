@@ -1,0 +1,15 @@
+{
+  "name": "helm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Helm — AI Operating System for Solo Founders",
+  "scripts": {
+    "dev": "pnpm --parallel -r run dev",
+    "build": "pnpm --parallel -r run build",
+    "lint": "pnpm --parallel -r run lint",
+    "typecheck": "pnpm --parallel -r run typecheck"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
