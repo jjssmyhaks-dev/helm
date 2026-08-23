@@ -1,5 +1,7 @@
 import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import Redis from 'ioredis';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '@prisma/client';
 
@@ -19,7 +21,10 @@ export class EventBusService implements OnModuleInit, OnModuleDestroy {
   private subClient!: Redis;
   private handlers = new Map<string, SignalHandler[]>();
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @InjectQueue('signal-processing') private signalQueue: Queue,
+  ) {}
 
   onModuleInit() {
     const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
@@ -66,6 +71,22 @@ export class EventBusService implements OnModuleInit, OnModuleDestroy {
     // Also publish to founder-level wildcard channel for global orchestrator
     const wildcardChannel = `helm:${signal.founderId}:*`;
     await this.pubClient.publish(wildcardChannel, JSON.stringify(signal));
+
+    // Enqueue to BullMQ for durable processing with retry
+    // This ensures signals survive server restarts and are retried on failure
+    await this.signalQueue.add(
+      `signal-${signal.type}`,
+      {
+        type: signal.type,
+        publisherAgentId: signal.publisherAgentId,
+        founderId: signal.founderId,
+        payload: signal.payload,
+      },
+      {
+        jobId: `sig-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        priority: this.getSignalPriority(signal.type),
+      },
+    );
 
     this.logger.debug(`Published signal: ${signal.type} from agent ${signal.publisherAgentId}`);
   }
@@ -117,5 +138,20 @@ export class EventBusService implements OnModuleInit, OnModuleDestroy {
 
   private channelName(founderId: string, signalType: string): string {
     return `helm:${founderId}:${signalType}`;
+  }
+
+  /**
+   * Assign priority to signals — financial and urgent signals get higher priority.
+   * Lower number = higher priority in BullMQ.
+   */
+  private getSignalPriority(signalType: string): number {
+    // High priority: financial risks, delivery delays
+    if (signalType.startsWith('cashflow.') || signalType === 'delivery.delayed') return 1;
+    // Medium-high: budget constraints, expense spikes
+    if (signalType.includes('budget') || signalType.includes('expense')) return 2;
+    // Medium: operational signals
+    if (signalType.startsWith('operations.') || signalType.startsWith('quality.')) return 3;
+    // Normal: research and marketing signals
+    return 5;
   }
 }

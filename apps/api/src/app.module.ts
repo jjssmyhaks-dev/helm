@@ -12,11 +12,15 @@ import { ContextModule } from './context/context.module.js';
 import { OrchestratorModule } from './orchestrator/orchestrator.module.js';
 import { DatabaseModule } from './database/database.module.js';
 import { ActivityModule } from './activity/activity.module.js';
+import { QueueModule } from './queue/queue.module.js';
+import { VoiceModule } from './voice/voice.module.js';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     DatabaseModule,
+    QueueModule,
+    VoiceModule,
     AuthModule,
     FounderModule,
     ChatModule,

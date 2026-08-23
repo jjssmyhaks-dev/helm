@@ -6,6 +6,7 @@ import { EventBusService } from '../event/event-bus.service.js';
 import { RiskTierService, TierClassification } from '../approval/risk-tier.service.js';
 import { ApprovalService } from '../approval/approval.service.js';
 import { ContextService } from '../context/context.service.js';
+import { TokenBudgetService } from '../queue/token-budget.service.js';
 
 interface CreateTaskInput {
   title: string;
@@ -28,6 +29,7 @@ export class AgentTaskService {
     private riskTier: RiskTierService,
     private approvalService: ApprovalService,
     private contextService: ContextService,
+    private tokenBudget: TokenBudgetService,
   ) {
     this.anthropic = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY,
@@ -124,6 +126,25 @@ export class AgentTaskService {
     });
 
     try {
+      // Check token budget before making LLM call
+      const budgetCheck = await this.tokenBudget.checkBudget(
+        task.founderId,
+        task.layer,
+        task.assignedAgentId,
+        2000, // estimated tokens
+      );
+      if (!budgetCheck.allowed) {
+        this.logger.warn(`Token budget exceeded for agent ${task.assignedAgentId}: ${budgetCheck.reason}`);
+        await this.prisma.task.update({
+          where: { id: taskId },
+          data: {
+            status: TaskStatus.FAILED,
+            error: `Budget exceeded: ${budgetCheck.reason}`,
+          },
+        });
+        return;
+      }
+
       // Retrieve relevant context
       const context = await this.contextService.retrieveRelevant(
         task.founderId,
@@ -132,6 +153,18 @@ export class AgentTaskService {
 
       // Execute with LLM
       const result = await this.executeWithLLM(task, context);
+
+      // Record token usage
+      if (result.tokenUsage) {
+        await this.tokenBudget.recordUsage(task.founderId, {
+          inputTokens: result.tokenUsage.inputTokens,
+          outputTokens: result.tokenUsage.outputTokens,
+          model: result.tokenUsage.model,
+          agentId: task.assignedAgentId,
+          layer: task.layer,
+          taskId: task.id,
+        });
+      }
 
       // Check if this action needs approval (re-classify with execution context)
       const tierResult = await this.riskTier.classifyAction(
@@ -242,6 +275,7 @@ export class AgentTaskService {
     isIrreversible: boolean;
     signal?: { type: string; payload: Record<string, unknown> };
     contextUpdate?: { key: string; value: string; tags: string[] };
+    tokenUsage?: { inputTokens: number; outputTokens: number; model: string };
   }> {
     const agent = task.assignedAgent;
     const message = await this.anthropic.messages.create({
@@ -277,9 +311,14 @@ If you learned something important for future decisions, include a "contextUpdat
     });
 
     const text = message.content[0].type === 'text' ? message.content[0].text : '{}';
+    const tokenUsage = {
+      inputTokens: message.usage?.input_tokens || 0,
+      outputTokens: message.usage?.output_tokens || 0,
+      model: 'claude-sonnet-4-20250514',
+    };
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]);
+      return { ...JSON.parse(jsonMatch[0]), tokenUsage };
     }
 
     return {
@@ -289,6 +328,7 @@ If you learned something important for future decisions, include a "contextUpdat
       reasoning: 'Direct execution',
       confidence: 0.7,
       isIrreversible: false,
+      tokenUsage,
     };
   }
 
