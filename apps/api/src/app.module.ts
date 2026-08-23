@@ -14,6 +14,11 @@ import { DatabaseModule } from './database/database.module.js';
 import { ActivityModule } from './activity/activity.module.js';
 import { QueueModule } from './queue/queue.module.js';
 import { VoiceModule } from './voice/voice.module.js';
+import { LLMModule } from './llm/llm.module.js';
+import { OnboardingModule } from './onboarding/onboarding.module.js';
+import { SchedulerModule } from './scheduler/scheduler.module.js';
+import { NotificationModule } from './notification/notification.module.js';
+import { DashboardModule } from './dashboard/dashboard.module.js';
 
 @Module({
   imports: [
@@ -21,6 +26,11 @@ import { VoiceModule } from './voice/voice.module.js';
     DatabaseModule,
     QueueModule,
     VoiceModule,
+    LLMModule,
+    OnboardingModule,
+    SchedulerModule,
+    NotificationModule,
+    DashboardModule,
     AuthModule,
     FounderModule,
     ChatModule,

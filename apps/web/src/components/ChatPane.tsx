@@ -60,26 +60,42 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
     setInput('');
     setSending(true);
 
-    try {
-      const result = await api.sendMessage(userMessage.content, sessionId || undefined);
-      onSessionChange(result.sessionId);
+    // Add placeholder for streaming response
+    const streamingId = `streaming-${Date.now()}`;
+    setMessages((prev) => [...prev, {
+      id: streamingId,
+      role: 'agent',
+      content: '',
+      createdAt: new Date().toISOString(),
+    }]);
 
-      const agentMessage: ChatMessage = {
-        id: result.message.id,
-        role: 'agent',
-        content: result.message.content,
-        createdAt: result.message.createdAt,
-      };
-      setMessages((prev) => [...prev, agentMessage]);
+    try {
+      await api.streamMessage(
+        userMessage.content,
+        sessionId || undefined,
+        // onChunk: update the streaming message
+        (chunk: string) => {
+          setMessages((prev) => prev.map((m) =>
+            m.id === streamingId
+              ? { ...m, content: m.content + chunk }
+              : m,
+          ));
+        },
+        // onSession: update session ID
+        (newSessionId: string) => {
+          onSessionChange(newSessionId);
+        },
+        // onDone: finalize
+        () => {
+          setSending(false);
+        },
+      );
     } catch (err: any) {
-      const errorMessage: ChatMessage = {
-        id: `error-${Date.now()}`,
-        role: 'system',
-        content: `Error: ${err.message}`,
-        createdAt: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-    } finally {
+      setMessages((prev) => prev.map((m) =>
+        m.id === streamingId
+          ? { ...m, content: `Error: ${err.message}` }
+          : m,
+      ));
       setSending(false);
     }
   };

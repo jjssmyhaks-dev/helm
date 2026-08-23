@@ -1,8 +1,9 @@
-import { Controller, Post, Get, Body, Param, Query, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, Query, UseGuards, Request, HttpException, HttpStatus, Sse, MessageEvent } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
 import { ChatService } from './chat.service.js';
 import { RateLimiterService } from '../queue/rate-limiter.service.js';
+import { Observable } from 'rxjs';
 import { IsString, IsOptional } from 'class-validator';
 
 class SendMessageDto {
@@ -83,5 +84,23 @@ export class ChatController {
   @ApiOperation({ summary: 'List all chat sessions' })
   async listSessions(@Request() req: any) {
     return this.chatService.listSessions(req.user.id);
+  }
+
+  @Post('stream')
+  @ApiOperation({ summary: 'Send message and stream response token-by-token via SSE' })
+  async streamMessage(@Body() dto: SendMessageDto, @Request() req: any): Promise<Observable<MessageEvent>> {
+    // Check rate limit
+    const rateCheck = await this.rateLimiter.checkRateLimit('chat:founder', {
+      maxRequests: 60,
+      windowSeconds: 3600,
+    });
+    if (!rateCheck.allowed) {
+      throw new HttpException(
+        `Rate limit exceeded. Try again at ${rateCheck.resetsAt.toISOString()}`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    return this.chatService.streamMessage(req.user.id, dto.content, dto.sessionId);
   }
 }

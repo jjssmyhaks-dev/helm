@@ -47,6 +47,72 @@ class ApiClient {
     }>('POST', '/chat/message', { content, sessionId });
   }
 
+  /**
+   * Stream a message response token-by-token via SSE.
+   */
+  async streamMessage(
+    content: string,
+    sessionId: string | undefined,
+    onChunk: (chunk: string) => void,
+    onSession: (sessionId: string) => void,
+    onDone: () => void,
+  ): Promise<void> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`;
+    }
+
+    const response = await fetch(`${API_BASE}/chat/stream`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ content, sessionId }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: response.statusText }));
+      throw new Error(error.message || `API error: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('No response body');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.type === 'session') {
+              onSession(data.sessionId);
+            } else if (data.type === 'chunk') {
+              onChunk(data.content);
+            } else if (data.type === 'done') {
+              onDone();
+              return;
+            } else if (data.type === 'error') {
+              throw new Error(data.error);
+            }
+          } catch (e) {
+            // Skip parse errors
+          }
+        }
+      }
+    }
+
+    onDone();
+  }
+
   async getChatHistory(sessionId: string) {
     return this.request<any>('GET', `/chat/history/${sessionId}`);
   }
@@ -112,6 +178,19 @@ class ApiClient {
 
   async disconnectConnector(name: string) {
     return this.request<any>('DELETE', `/connectors/${name}/disconnect`);
+  }
+
+  // Onboarding
+  async getOnboardingState() {
+    return this.request<any>('GET', '/onboarding');
+  }
+
+  async submitOnboardingAnswer(answer: string) {
+    return this.request<any>('POST', '/onboarding/answer', { answer });
+  }
+
+  async skipOnboarding() {
+    return this.request<any>('POST', '/onboarding/skip');
   }
 
   // Founder
