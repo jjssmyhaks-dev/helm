@@ -1,42 +1,27 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service.js';
+import { AgentLayer } from '@prisma/client';
 
-/**
- * Auth service — lightweight service for verifying users exist in the DB.
- * Actual authentication is handled by Clerk on the frontend.
- * This service syncs Clerk users to our database.
- */
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
   constructor(private prisma: PrismaService) {}
 
-  /**
-   * Ensure a Clerk user exists in our database.
-   * Called when a user first signs in via Clerk.
-   */
-  async syncUser(clerkUser: {
-    id: string;
-    email: string;
-    name?: string;
-  }) {
+  async syncUser(clerkUser: { id: string; email: string; name?: string }) {
     let founder = await this.prisma.founder.findUnique({
-      where: { id: clerkUser.id },
+      where: { clerkUserId: clerkUser.id },
     });
 
     if (!founder) {
       founder = await this.prisma.founder.create({
         data: {
-          id: clerkUser.id,
+          id: crypto.randomUUID(),
+          clerkUserId: clerkUser.id,
           email: clerkUser.email,
-          passwordHash: 'clerk-managed',
           name: clerkUser.name || clerkUser.email.split('@')[0],
-          businessName: '',
         },
       });
-
-      // Seed default agents
       await this.seedDefaultAgents(founder.id);
       this.logger.log(`Created founder: ${founder.id}`);
     }
@@ -45,49 +30,41 @@ export class AuthService {
   }
 
   async getFounder(clerkUserId: string) {
-    return this.prisma.founder.findUnique({
-      where: { id: clerkUserId },
-    });
+    return this.prisma.founder.findUnique({ where: { clerkUserId } });
   }
 
-  /**
-   * Seed the standard 26 agents for a new founder.
-   */
   private async seedDefaultAgents(founderId: string) {
-    const agentDefinitions = [
-      { name: 'Global Orchestrator', description: 'Owns founder goals, context, and overall state.', type: 'GLOBAL_ORCHestrator' as const, layer: null },
-      { name: 'Research Orchestrator', description: 'Decomposes research tasks.', type: 'LAYER_ORCHESTRATOR' as const, layer: 'RESEARCH' as const },
-      { name: 'Competitor Intelligence', description: 'Tracks named competitors.', type: 'SUB_AGENT' as const, layer: 'RESEARCH' as const },
-      { name: 'Market & Trend Scanning', description: 'Continuous scan of industry news.', type: 'SUB_AGENT' as const, layer: 'RESEARCH' as const },
-      { name: 'Pricing & Benchmarking', description: 'Category pricing benchmarks.', type: 'SUB_AGENT' as const, layer: 'RESEARCH' as const },
-      { name: 'Customer & Audience Research', description: 'Persona research, sentiment analysis.', type: 'SUB_AGENT' as const, layer: 'RESEARCH' as const },
-      { name: 'Campaign Deep-Dive', description: 'On-demand research from Marketing.', type: 'SUB_AGENT' as const, layer: 'RESEARCH' as const },
-      { name: 'Marketing Orchestrator', description: 'Decomposes marketing tasks.', type: 'LAYER_ORCHESTRATOR' as const, layer: 'MARKETING' as const },
-      { name: 'Digital Marketing Strategist', description: 'Channel strategy, campaign planning.', type: 'SUB_AGENT' as const, layer: 'MARKETING' as const },
-      { name: 'Performance Marketer', description: 'Paid ads, conversion tracking.', type: 'SUB_AGENT' as const, layer: 'MARKETING' as const },
-      { name: 'Content & Copywriter', description: 'Blog, email, ad copy.', type: 'SUB_AGENT' as const, layer: 'MARKETING' as const },
-      { name: 'SEO Specialist', description: 'Keyword research, on-page SEO.', type: 'SUB_AGENT' as const, layer: 'MARKETING' as const },
-      { name: 'Designer', description: 'Creative assets via Figma/Canva.', type: 'SUB_AGENT' as const, layer: 'MARKETING' as const },
-      { name: 'Social & Community', description: 'Organic social posting.', type: 'SUB_AGENT' as const, layer: 'MARKETING' as const },
-      { name: 'Operations Orchestrator', description: 'Decomposes operations tasks.', type: 'LAYER_ORCHESTRATOR' as const, layer: 'OPERATIONS' as const },
-      { name: 'Process & Workflow', description: 'Internal SOPs, automation.', type: 'SUB_AGENT' as const, layer: 'OPERATIONS' as const },
-      { name: 'Vendor & Supply Chain', description: 'Vendor communication, order tracking.', type: 'SUB_AGENT' as const, layer: 'OPERATIONS' as const },
-      { name: 'Quality & Fulfillment', description: 'Order/delivery quality checks.', type: 'SUB_AGENT' as const, layer: 'OPERATIONS' as const },
-      { name: 'Customer Support', description: 'Tier-1 support triage.', type: 'SUB_AGENT' as const, layer: 'OPERATIONS' as const },
-      { name: 'Scheduling & Capacity Planning', description: 'Resource forecasting.', type: 'SUB_AGENT' as const, layer: 'OPERATIONS' as const },
-      { name: 'Finance Orchestrator', description: 'Decomposes finance tasks.', type: 'LAYER_ORCHESTRATOR' as const, layer: 'FINANCE' as const },
-      { name: 'Bookkeeping', description: 'Transaction categorization.', type: 'SUB_AGENT' as const, layer: 'FINANCE' as const },
-      { name: 'Cash Flow & Forecasting', description: 'Cash position, runway forecasting.', type: 'SUB_AGENT' as const, layer: 'FINANCE' as const },
-      { name: 'Pricing & Unit Economics', description: 'Margin analysis, pricing.', type: 'SUB_AGENT' as const, layer: 'FINANCE' as const },
-      { name: 'Compliance & Tax', description: 'Filing calendar, GST/tax tracking.', type: 'SUB_AGENT' as const, layer: 'FINANCE' as const },
-      { name: 'Fundraising & Investor Relations', description: 'Cap table, investor updates.', type: 'SUB_AGENT' as const, layer: 'FINANCE' as const },
+    const agents = [
+      { name: 'Global Orchestrator', description: 'Owns founder goals and routing.', role: 'orchestrator', layer: 'RESEARCH' as AgentLayer },
+      { name: 'Research Orchestrator', description: 'Decomposes research tasks.', role: 'orchestrator', layer: 'RESEARCH' as AgentLayer },
+      { name: 'Competitor Intelligence', description: 'Tracks named competitors.', role: 'specialist', layer: 'RESEARCH' as AgentLayer },
+      { name: 'Market & Trend Scanning', description: 'Industry news and trends.', role: 'specialist', layer: 'RESEARCH' as AgentLayer },
+      { name: 'Pricing & Benchmarking', description: 'Category pricing benchmarks.', role: 'specialist', layer: 'RESEARCH' as AgentLayer },
+      { name: 'Customer & Audience Research', description: 'Persona research, sentiment.', role: 'specialist', layer: 'RESEARCH' as AgentLayer },
+      { name: 'Campaign Deep-Dive', description: 'On-demand research.', role: 'specialist', layer: 'RESEARCH' as AgentLayer },
+      { name: 'Marketing Orchestrator', description: 'Decomposes marketing tasks.', role: 'orchestrator', layer: 'MARKETING' as AgentLayer },
+      { name: 'Digital Marketing Strategist', description: 'Channel strategy.', role: 'specialist', layer: 'MARKETING' as AgentLayer },
+      { name: 'Performance Marketer', description: 'Paid ads, conversion tracking.', role: 'specialist', layer: 'MARKETING' as AgentLayer },
+      { name: 'Content & Copywriter', description: 'Blog, email, ad copy.', role: 'specialist', layer: 'MARKETING' as AgentLayer },
+      { name: 'SEO Specialist', description: 'Keyword research, on-page SEO.', role: 'specialist', layer: 'MARKETING' as AgentLayer },
+      { name: 'Designer', description: 'Creative assets.', role: 'specialist', layer: 'MARKETING' as AgentLayer },
+      { name: 'Social & Community', description: 'Organic social posting.', role: 'specialist', layer: 'MARKETING' as AgentLayer },
+      { name: 'Operations Orchestrator', description: 'Decomposes ops tasks.', role: 'orchestrator', layer: 'OPERATIONS' as AgentLayer },
+      { name: 'Process & Workflow', description: 'Internal SOPs, automation.', role: 'specialist', layer: 'OPERATIONS' as AgentLayer },
+      { name: 'Vendor & Supply Chain', description: 'Vendor communication.', role: 'specialist', layer: 'OPERATIONS' as AgentLayer },
+      { name: 'Quality & Fulfillment', description: 'Order/delivery quality.', role: 'specialist', layer: 'OPERATIONS' as AgentLayer },
+      { name: 'Customer Support', description: 'Tier-1 support triage.', role: 'specialist', layer: 'OPERATIONS' as AgentLayer },
+      { name: 'Scheduling & Capacity Planning', description: 'Resource forecasting.', role: 'specialist', layer: 'OPERATIONS' as AgentLayer },
+      { name: 'Finance Orchestrator', description: 'Decomposes finance tasks.', role: 'orchestrator', layer: 'FINANCE' as AgentLayer },
+      { name: 'Bookkeeping', description: 'Transaction categorization.', role: 'specialist', layer: 'FINANCE' as AgentLayer },
+      { name: 'Cash Flow & Forecasting', description: 'Cash position, runway.', role: 'specialist', layer: 'FINANCE' as AgentLayer },
+      { name: 'Pricing & Unit Economics', description: 'Margin analysis.', role: 'specialist', layer: 'FINANCE' as AgentLayer },
+      { name: 'Compliance & Tax', description: 'Filing, GST/tax tracking.', role: 'specialist', layer: 'FINANCE' as AgentLayer },
+      { name: 'Fundraising & Investor Relations', description: 'Cap table, updates.', role: 'specialist', layer: 'FINANCE' as AgentLayer },
     ];
 
     await this.prisma.agent.createMany({
-      data: agentDefinitions.map((def) => ({
-        ...def,
-        founderId,
-      })),
+      data: agents.map((a) => ({ ...a, founderId })),
     });
   }
 }

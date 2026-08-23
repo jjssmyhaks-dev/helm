@@ -1,18 +1,18 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { TaskStatus, RiskTier, AgentStatus, Prisma } from '@prisma/client';
-import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../database/prisma.service.js';
 import { EventBusService } from '../event/event-bus.service.js';
-import { RiskTierService, TierClassification } from '../approval/risk-tier.service.js';
+import { RiskTierService } from '../approval/risk-tier.service.js';
 import { ApprovalService } from '../approval/approval.service.js';
 import { ContextService } from '../context/context.service.js';
 import { TokenBudgetService } from '../queue/token-budget.service.js';
 import { ComposioService } from '../connector/composio.service.js';
+import { LLMService } from '../llm/llm.service.js';
 
 interface CreateTaskInput {
   title: string;
   description: string;
-  layer: any;
+  layer: string;
   assignedAgentId: string;
   riskTier: RiskTier;
   founderId: string;
@@ -22,7 +22,6 @@ interface CreateTaskInput {
 @Injectable()
 export class AgentTaskService {
   private readonly logger = new Logger(AgentTaskService.name);
-  private anthropic: Anthropic;
 
   constructor(
     private prisma: PrismaService,
@@ -32,22 +31,19 @@ export class AgentTaskService {
     private contextService: ContextService,
     private tokenBudget: TokenBudgetService,
     private composio: ComposioService,
-  ) {
-    this.anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    });
-  }
+    private llm: LLMService,
+  ) {}
 
   async createTask(input: CreateTaskInput) {
     return this.prisma.task.create({
       data: {
         title: input.title,
         description: input.description,
-        layer: input.layer,
+        layer: input.layer as any,
         assignedAgentId: input.assignedAgentId,
         riskTier: input.riskTier,
         founderId: input.founderId,
-        parentTaskId: input.parentTaskId ?? null,
+        parentId: input.parentTaskId ?? undefined,
       },
       include: {
         assignedAgent: { select: { id: true, name: true, layer: true } },
@@ -60,8 +56,6 @@ export class AgentTaskService {
       where: { id: taskId },
       include: {
         assignedAgent: { select: { id: true, name: true, layer: true } },
-        approval: true,
-        subTasks: true,
       },
     });
   }
@@ -85,78 +79,45 @@ export class AgentTaskService {
     });
   }
 
-  /**
-   * Execute a task - the core agent execution loop.
-   * 1. Mark agent as working
-   * 2. Use LLM to process the task
-   * 3. Check risk tier and handle accordingly
-   * 4. Emit events and update context
-   */
   async executeTask(taskId: string) {
     const task = await this.prisma.task.findUnique({
       where: { id: taskId },
-      include: {
-        assignedAgent: true,
-        parentTask: true,
-      },
+      include: { assignedAgent: true },
     });
 
     if (!task) throw new NotFoundException('Task not found');
-    if (task.status !== 'PENDING' && task.status !== 'IN_PROGRESS') {
-      return; // Already executed or cancelled
-    }
+    if (!task.assignedAgentId) throw new NotFoundException('Task has no assigned agent');
+    if (task.status !== 'PENDING' && task.status !== 'IN_PROGRESS') return;
 
-    // Update statuses
-    await this.prisma.task.update({
-      where: { id: taskId },
-      data: { status: TaskStatus.IN_PROGRESS },
-    });
-    await this.prisma.agent.update({
-      where: { id: task.assignedAgentId },
-      data: { status: AgentStatus.WORKING },
-    });
+    await this.prisma.task.update({ where: { id: taskId }, data: { status: 'IN_PROGRESS' } });
+    await this.prisma.agent.update({ where: { id: task.assignedAgentId }, data: { status: 'WORKING' } });
 
-    // Log activity
     await this.prisma.activityLogEntry.create({
       data: {
         founderId: task.founderId,
         agentId: task.assignedAgentId,
         action: 'task_started',
-        details: { taskId, title: task.title },
+        details: { taskId, title: task.title } as unknown as Prisma.InputJsonValue,
         riskTier: task.riskTier,
       },
     });
 
     try {
-      // Check token budget before making LLM call
       const budgetCheck = await this.tokenBudget.checkBudget(
-        task.founderId,
-        task.layer,
-        task.assignedAgentId,
-        2000, // estimated tokens
+        task.founderId, task.layer, task.assignedAgentId, 2000,
       );
       if (!budgetCheck.allowed) {
-        this.logger.warn(`Token budget exceeded for agent ${task.assignedAgentId}: ${budgetCheck.reason}`);
+        this.logger.warn(`Token budget exceeded: ${budgetCheck.reason}`);
         await this.prisma.task.update({
           where: { id: taskId },
-          data: {
-            status: TaskStatus.FAILED,
-            error: `Budget exceeded: ${budgetCheck.reason}`,
-          },
+          data: { status: 'FAILED', error: `Budget exceeded: ${budgetCheck.reason}` },
         });
         return;
       }
 
-      // Retrieve relevant context
-      const context = await this.contextService.retrieveRelevant(
-        task.founderId,
-        task.description,
-      );
-
-      // Execute with LLM
+      const context = await this.contextService.retrieveRelevant(task.founderId, task.description || task.title);
       const result = await this.executeWithLLM(task, context);
 
-      // Record token usage
       if (result.tokenUsage) {
         await this.tokenBudget.recordUsage(task.founderId, {
           inputTokens: result.tokenUsage.inputTokens,
@@ -168,19 +129,12 @@ export class AgentTaskService {
         });
       }
 
-      // Check if this action needs approval (re-classify with execution context)
       const tierResult = await this.riskTier.classifyAction(
-        task.founderId,
-        task.layer,
-        result.actionType || 'general',
-        {
-          confidence: result.confidence,
-          isIrreversible: result.isIrreversible,
-        },
+        task.founderId, task.layer, result.actionType || 'general',
+        { confidence: result.confidence, isIrreversible: result.isIrreversible },
       );
 
       if (tierResult.tier === RiskTier.APPROVAL_REQUIRED) {
-        // Create approval request - agent persists state and continues
         await this.approvalService.createApprovalRequest({
           taskId: task.id,
           agentId: task.assignedAgentId,
@@ -190,36 +144,28 @@ export class AgentTaskService {
           reasoning: result.reasoning || 'Action requires founder approval',
           riskTier: RiskTier.APPROVAL_REQUIRED,
         });
-
         await this.prisma.agent.update({
           where: { id: task.assignedAgentId },
-          data: { status: AgentStatus.WAITING_APPROVAL },
+          data: { status: 'WAITING_APPROVAL' },
         });
-
         return;
       }
 
-      // Tier 1 or 2: complete the task
       await this.prisma.task.update({
         where: { id: taskId },
         data: {
-          status: TaskStatus.COMPLETED,
+          status: 'COMPLETED',
           result: (result.data || {}) as unknown as Prisma.InputJsonValue,
           completedAt: new Date(),
         },
       });
 
-      // Save to context memory
       if (result.contextUpdate) {
         await this.contextService.save(
-          task.founderId,
-          result.contextUpdate.key,
-          result.contextUpdate.value,
-          result.contextUpdate.tags || [],
+          task.founderId, result.contextUpdate.key, result.contextUpdate.value, result.contextUpdate.tags || [],
         );
       }
 
-      // Emit event if the task produces a signal
       if (result.signal) {
         await this.eventBus.publish({
           type: result.signal.type,
@@ -229,139 +175,95 @@ export class AgentTaskService {
         });
       }
 
-      // Log completion
       await this.prisma.activityLogEntry.create({
         data: {
           founderId: task.founderId,
           agentId: task.assignedAgentId,
           action: 'task_completed',
-          details: { taskId, title: task.title, result: result.data } as unknown as Prisma.InputJsonValue,
+          details: { taskId, title: task.title } as unknown as Prisma.InputJsonValue,
           riskTier: task.riskTier,
         },
       });
     } catch (err) {
-      this.logger.error(`Task ${taskId} execution failed:`, err);
+      this.logger.error(`Task ${taskId} failed:`, err);
       await this.prisma.task.update({
         where: { id: taskId },
         data: {
-          status: TaskStatus.FAILED,
+          status: 'FAILED',
           error: err instanceof Error ? err.message : String(err),
         },
       });
-      await this.prisma.activityLogEntry.create({
-        data: {
-          founderId: task.founderId,
-          agentId: task.assignedAgentId,
-          action: 'task_failed',
-          details: { taskId, error: err instanceof Error ? err.message : String(err) },
-          riskTier: task.riskTier,
-        },
-      });
     } finally {
-      await this.prisma.agent.update({
-        where: { id: task.assignedAgentId },
-        data: { status: AgentStatus.IDLE },
-      });
+      await this.prisma.agent.update({ where: { id: task.assignedAgentId }, data: { status: 'IDLE' } });
     }
   }
 
-  private async executeWithLLM(
-    task: any,
-    context: string[],
-  ): Promise<{
-    data: Record<string, unknown>;
-    actionType: string;
-    actionDescription: string;
-    reasoning: string;
-    confidence: number;
-    isIrreversible: boolean;
-    signal?: { type: string; payload: Record<string, unknown> };
-    contextUpdate?: { key: string; value: string; tags: string[] };
-    tokenUsage?: { inputTokens: number; outputTokens: number; model: string };
-  }> {
+  private async executeWithLLM(task: any, context: string[]) {
     const agent = task.assignedAgent;
 
-    // Fetch available Composio tools for this founder
     let toolsContext = '';
     try {
       const session = await this.composio.getSession(task.founderId);
       const tools = await session.tools();
       if (tools && tools.length > 0) {
         const toolList = tools.slice(0, 20).map((t: any) => `- ${t.name}: ${t.description || 'No description'}`).join('\n');
-        toolsContext = `\n\nAvailable external tools you can use (via Composio):\n${toolList}\n\nTo use a tool, include in your response: { "useTool": { "action": "TOOL_NAME", "params": { ... } } }`;
+        toolsContext = `\n\nAvailable external tools (via Composio):\n${toolList}\nTo use a tool: { "useTool": { "action": "TOOL_NAME", "params": {} } }`;
       }
-    } catch (err) {
-      // Composio not available - continue without tools
+    } catch {
+      // Composio not available
     }
 
-    const message = await this.anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 2048,
-      messages: [
-        {
-          role: 'user',
-          content: `You are "${agent.name}", a specialist AI agent in the ${agent.layer || 'global'} layer of Helm, an AI operating system for solo founders.
-
-Your task: "${task.title}"
-Description: "${task.description}"
-
-Relevant context:
-${context.length > 0 ? context.map((c) => `- ${c}`).join('\n') : 'No prior context.'}
-${toolsContext}
-
-Execute this task. Produce a result as a JSON object:
+    const response = await this.llm.complete([
+      {
+        role: 'system',
+        content: `You are "${agent.name}", a ${task.layer || 'global'} layer agent in Helm.
+Execute this task. Output valid JSON:
 {
-  "data": { ... your work output ... },
+  "data": { ... },
   "actionType": "general",
-  "actionDescription": "Brief description of what you did",
-  "reasoning": "Why you took this approach",
+  "actionDescription": "What you did",
+  "reasoning": "Why",
   "confidence": 0.85,
   "isIrreversible": false,
   "signal": null,
-  "useTool": null,
-  "contextUpdate": { "key": "some_key", "value": "what you learned", "tags": ["tag1"] }
-}
+  "contextUpdate": { "key": "...", "value": "...", "tags": [] }
+}${toolsContext}`,
+      },
+      {
+        role: 'user',
+        content: `Task: "${task.title}"
+Description: "${task.description}"
+Context: ${context.length > 0 ? context.join('; ') : 'None'}`,
+      },
+    ], { maxTokens: 2048, temperature: 0.4 });
 
-If your work produces a cross-layer signal (e.g., marketing detects underperforming leads, ops detects delay), include it in "signal" with the correct type and payload.
-If you need to use an external tool, include it in "useTool".
-If you learned something important for future decisions, include a "contextUpdate" to save to memory.`,
-        },
-      ],
-    });
-
-    const text = message.content[0].type === 'text' ? message.content[0].text : '{}';
     const tokenUsage = {
-      inputTokens: message.usage?.input_tokens || 0,
-      outputTokens: message.usage?.output_tokens || 0,
-      model: 'claude-sonnet-4-20250514',
+      inputTokens: 2000,
+      outputTokens: 500,
+      model: 'groq',
     };
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
 
-      // Execute Composio tool if agent requested it
-      if (parsed.useTool && parsed.useTool.action) {
-        try {
-          this.logger.log(`Agent requesting tool: ${parsed.useTool.action}`);
-          const session = await this.composio.getSession(task.founderId);
-          const toolResult = await session.execute(parsed.useTool.action, parsed.useTool.params || {});
-          // Merge tool result into the task data
-          parsed.data = {
-            ...parsed.data,
-            toolResult,
-          };
-          parsed.toolUsed = parsed.useTool.action;
-        } catch (err) {
-          this.logger.error(`Tool execution failed: ${err}`);
-          parsed.toolError = err instanceof Error ? err.message : String(err);
+    try {
+      const jsonMatch = response.content.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed.useTool && parsed.useTool.action) {
+          try {
+            const session = await this.composio.getSession(task.founderId);
+            const toolResult = await session.execute(parsed.useTool.action, parsed.useTool.params || {});
+            parsed.data = { ...parsed.data, toolResult };
+          } catch (err) {
+            this.logger.error(`Tool execution failed: ${err}`);
+          }
         }
+        return { ...parsed, tokenUsage };
       }
-
-      return { ...parsed, tokenUsage };
+    } catch {
+      // fall through
     }
 
     return {
-      data: { result: text },
+      data: { result: response.content },
       actionType: 'general',
       actionDescription: task.title,
       reasoning: 'Direct execution',
@@ -371,15 +273,9 @@ If you learned something important for future decisions, include a "contextUpdat
     };
   }
 
-  /**
-   * Called when an approval is resolved to continue task execution.
-   */
   async resumeTaskAfterApproval(taskId: string) {
     const task = await this.prisma.task.findUnique({ where: { id: taskId } });
     if (!task || task.status !== TaskStatus.IN_PROGRESS) return;
-
-    // Task is back in progress - the approval handler already updated it
-    // Re-execute with the updated state
     await this.executeTask(taskId);
   }
 }

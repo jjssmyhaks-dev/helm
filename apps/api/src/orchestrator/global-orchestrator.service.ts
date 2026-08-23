@@ -1,12 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { LayerName } from '@prisma/client';
-import Anthropic from '@anthropic-ai/sdk';
+import { AgentLayer } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service.js';
 import { EventBusService } from '../event/event-bus.service.js';
 import { LayerOrchestratorService } from './layer-orchestrator.service.js';
 import { ContextService } from '../context/context.service.js';
+import { LLMService } from '../llm/llm.service.js';
 
-const LAYER_KEYWORDS: Record<LayerName, string[]> = {
+const LAYER_KEYWORDS: Record<AgentLayer, string[]> = {
   RESEARCH: ['research', 'competitor', 'market', 'trend', 'benchmark', 'pricing research', 'audience', 'sentiment', 'industry'],
   MARKETING: ['marketing', 'ads', 'campaign', 'content', 'copy', 'seo', 'social', 'landing page', 'email', 'blog', 'design', 'creative'],
   OPERATIONS: ['operations', 'process', 'workflow', 'vendor', 'supplier', 'fulfillment', 'support', 'scheduling', 'inventory', 'delivery'],
@@ -16,34 +16,19 @@ const LAYER_KEYWORDS: Record<LayerName, string[]> = {
 @Injectable()
 export class GlobalOrchestratorService {
   private readonly logger = new Logger(GlobalOrchestratorService.name);
-  private anthropic: Anthropic;
 
   constructor(
     private prisma: PrismaService,
     private eventBus: EventBusService,
     private layerOrchestrator: LayerOrchestratorService,
     private contextService: ContextService,
-  ) {
-    this.anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    });
-  }
+    private llm: LLMService,
+  ) {}
 
-  /**
-   * Process a founder message — classify intent, route to appropriate layer(s),
-   * decompose into tasks, and return a response.
-   */
   async processMessage(founderId: string, content: string) {
-    // 1. Retrieve relevant context from memory
     const context = await this.contextService.retrieveRelevant(founderId, content);
-
-    // 2. Use LLM to classify the message and extract actionable intent
     const classification = await this.classifyIntent(content, context);
-
-    // 3. Route to appropriate layer(s)
     const results = await this.routeToLayers(founderId, classification, content);
-
-    // 4. Generate response
     const responseText = await this.generateResponse(content, results, context);
 
     return {
@@ -53,79 +38,58 @@ export class GlobalOrchestratorService {
     };
   }
 
-  /**
-   * Use Claude to classify the founder's intent and determine routing.
-   */
   private async classifyIntent(
     content: string,
     context: string[],
   ): Promise<{
-    layers: LayerName[];
+    layers: AgentLayer[];
     taskDescriptions: string[];
     isQuestion: boolean;
     urgency: 'low' | 'medium' | 'high';
   }> {
-    try {
-      const message = await this.anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
-        messages: [
-          {
-            role: 'user',
-            content: `You are the Global Orchestrator for Helm, an AI operating system for solo founders.
-
-Classify this founder message into routing information.
-
-Founder message: "${content}"
-
-Relevant context from memory:
-${context.length > 0 ? context.map((c) => `- ${c}`).join('\n') : 'No relevant context found.'}
-
-Respond with a JSON object:
+    const response = await this.llm.complete([
+      {
+        role: 'system',
+        content: `Classify this founder message. Output valid JSON:
 {
-  "layers": ["<layer names from: research, marketing, operations, finance>"],
-  "taskDescriptions": ["<specific task description for each layer>"],
-  "isQuestion": <true if founder is asking a question, false if requesting action>,
-  "urgency": "<low|medium|high>"
-}
+  "layers": ["RESEARCH"|"MARKETING"|"OPERATIONS"|"FINANCE"],
+  "taskDescriptions": ["task for each layer"],
+  "isQuestion": true/false,
+  "urgency": "low|medium|high"
+}`,
+      },
+      {
+        role: 'user',
+        content: `Founder message: "${content}"
+Context: ${context.length > 0 ? context.join('; ') : 'None'}`,
+      },
+    ], { maxTokens: 512, temperature: 0.2 });
 
-Only include layers that are genuinely relevant. A single message can target multiple layers.
-For cross-functional requests (e.g., "launch a new product"), include all relevant layers.`,
-          },
-        ],
-      });
-
-      const text = message.content[0].type === 'text' ? message.content[0].text : '';
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
-      }
-    } catch (err) {
-      this.logger.error('Intent classification failed, falling back to keyword matching', err);
+    try {
+      const parsed = JSON.parse(response.content);
+      // Validate layers are valid AgentLayer values
+      parsed.layers = (parsed.layers || []).filter((l: string) =>
+        ['RESEARCH', 'MARKETING', 'OPERATIONS', 'FINANCE'].includes(l),
+      );
+      if (parsed.layers.length === 0) parsed.layers = ['RESEARCH'];
+      return parsed;
+    } catch {
+      return this.keywordClassification(content);
     }
-
-    // Fallback: keyword-based classification
-    return this.keywordClassification(content);
   }
 
-  private keywordClassification(content: string): {
-    layers: LayerName[];
-    taskDescriptions: string[];
-    isQuestion: boolean;
-    urgency: 'low' | 'medium' | 'high';
-  } {
+  private keywordClassification(content: string) {
     const lower = content.toLowerCase();
-    const matchedLayers: LayerName[] = [];
+    const matchedLayers: AgentLayer[] = [];
     const descriptions: string[] = [];
 
     for (const [layer, keywords] of Object.entries(LAYER_KEYWORDS)) {
       if (keywords.some((kw) => lower.includes(kw))) {
-        matchedLayers.push(layer as LayerName);
+        matchedLayers.push(layer as AgentLayer);
         descriptions.push(`Process founder request: ${content}`);
       }
     }
 
-    // Default to research if no match
     if (matchedLayers.length === 0) {
       matchedLayers.push('RESEARCH');
       descriptions.push(`Process founder request: ${content}`);
@@ -134,21 +98,18 @@ For cross-functional requests (e.g., "launch a new product"), include all releva
     return {
       layers: matchedLayers,
       taskDescriptions: descriptions,
-      isQuestion: lower.includes('?') || lower.startsWith('how') || lower.startsWith('what') || lower.startsWith('why') || lower.startsWith('when'),
-      urgency: 'medium',
+      isQuestion: lower.includes('?') || lower.startsWith('how') || lower.startsWith('what'),
+      urgency: 'medium' as const,
     };
   }
 
-  /**
-   * Route classified intent to the appropriate layer orchestrators.
-   */
   private async routeToLayers(
     founderId: string,
-    classification: { layers: LayerName[]; taskDescriptions: string[] },
+    classification: { layers: AgentLayer[]; taskDescriptions: string[] },
     originalMessage: string,
   ) {
     const allTasks: any[] = [];
-    const routedLayers: LayerName[] = [];
+    const routedLayers: AgentLayer[] = [];
 
     for (let i = 0; i < classification.layers.length; i++) {
       const layer = classification.layers[i];
@@ -166,43 +127,28 @@ For cross-functional requests (e.g., "launch a new product"), include all releva
     return { tasks: allTasks, routedLayers };
   }
 
-  /**
-   * Generate a natural language response from the orchestrator.
-   */
   private async generateResponse(
     originalMessage: string,
-    results: { tasks: any[]; routedLayers: LayerName[] },
+    results: { tasks: any[]; routedLayers: AgentLayer[] },
     context: string[],
   ): Promise<string> {
-    try {
-      const taskSummaries = results.tasks
-        .map((t) => `- ${t.title} (Layer: ${t.layer}, Status: ${t.status})`)
-        .join('\n');
+    const taskSummaries = results.tasks
+      .map((t) => `- ${t.title} (${t.layer}, ${t.status})`)
+      .join('\n');
 
-      const message = await this.anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
-        messages: [
-          {
-            role: 'user',
-            content: `You are Helm, an AI operating system for solo founders. Respond to the founder naturally.
+    const response = await this.llm.complete([
+      {
+        role: 'system',
+        content: `You are Helm, an AI operating system for solo founders. Respond concisely. Acknowledge the request, mention which teams are working on it, and what they'll do.`,
+      },
+      {
+        role: 'user',
+        content: `Founder: "${originalMessage}"
+Context: ${context.length > 0 ? context.join('; ') : 'None'}
+Tasks created: ${taskSummaries || 'None — this was a question.'}`,
+      },
+    ], { maxTokens: 512, temperature: 0.5 });
 
-Founder said: "${originalMessage}"
-
-Context: ${context.length > 0 ? context.join('; ') : 'No prior context.'}
-
-Tasks created:
-${taskSummaries || 'No tasks created — this was a question.'}
-
-Respond concisely as Helm. Acknowledge what you've understood, mention which team members (layers) are working on it, and what they'll do. If it was a question, answer directly.`,
-          },
-        ],
-      });
-
-      return message.content[0].type === 'text' ? message.content[0].text : 'Task processed.';
-    } catch (err) {
-      this.logger.error('Response generation failed', err);
-      return `I've routed your request to the following teams: ${results.routedLayers.join(', ')}. ${results.tasks.length} task(s) have been created and are being worked on.`;
-    }
+    return response.content;
   }
 }

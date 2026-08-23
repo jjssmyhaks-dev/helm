@@ -12,8 +12,6 @@ export class ApprovalService {
 
   /**
    * Create an approval request (called by agents when action is Tier 3).
-   * Returns the created approval — the requesting agent should persist
-   * its state and continue other work asynchronously.
    */
   async createApprovalRequest(params: {
     taskId: string;
@@ -24,10 +22,9 @@ export class ApprovalService {
     reasoning: string;
     riskTier: RiskTier;
   }) {
-    // Update task status
     await this.prisma.task.update({
       where: { id: params.taskId },
-      data: { status: 'WAITING_APPROVAL' },
+      data: { status: 'AWAITING_APPROVAL' },
     });
 
     const approval = await this.prisma.approval.create({
@@ -35,18 +32,13 @@ export class ApprovalService {
         taskId: params.taskId,
         agentId: params.agentId,
         founderId: params.founderId,
-        actionDescription: params.actionDescription,
-        actionPayload: params.actionPayload as unknown as Prisma.InputJsonValue,
+        actionType: params.actionDescription,
+        actionData: params.actionPayload as unknown as Prisma.InputJsonValue,
         reasoning: params.reasoning,
         riskTier: params.riskTier,
       },
-      include: {
-        agent: { select: { id: true, name: true, layer: true } },
-        task: { select: { id: true, title: true } },
-      },
     });
 
-    // Log activity
     await this.prisma.activityLogEntry.create({
       data: {
         founderId: params.founderId,
@@ -64,10 +56,6 @@ export class ApprovalService {
   async getPendingApprovals(founderId: string) {
     return this.prisma.approval.findMany({
       where: { founderId, status: 'PENDING' },
-      include: {
-        agent: { select: { id: true, name: true, layer: true } },
-        task: { select: { id: true, title: true, layer: true } },
-      },
       orderBy: { createdAt: 'asc' },
     });
   }
@@ -80,24 +68,22 @@ export class ApprovalService {
       where: { id: approvalId },
       data: {
         status: 'APPROVED',
-        resolutionNote: reason,
-        resolvedAt: new Date(),
+        decision: reason || 'Approved',
+        decidedAt: new Date(),
       },
     });
 
-    // Update task status back to in_progress so the agent can resume
     await this.prisma.task.update({
-      where: { id: approval.taskId },
+      where: { id: approval.taskId! },
       data: { status: 'IN_PROGRESS' },
     });
 
-    // Log activity
     await this.prisma.activityLogEntry.create({
       data: {
         founderId,
         agentId: approval.agentId,
         action: 'approval_approved',
-        details: { approvalId, description: approval.actionDescription } as unknown as Prisma.InputJsonValue,
+        details: { approvalId } as unknown as Prisma.InputJsonValue,
         riskTier: approval.riskTier,
       },
     });
@@ -113,13 +99,13 @@ export class ApprovalService {
       where: { id: approvalId },
       data: {
         status: 'REJECTED',
-        resolutionNote: reason,
-        resolvedAt: new Date(),
+        decision: reason || 'Rejected',
+        decidedAt: new Date(),
       },
     });
 
     await this.prisma.task.update({
-      where: { id: approval.taskId },
+      where: { id: approval.taskId! },
       data: { status: 'CANCELLED' },
     });
 
@@ -128,7 +114,7 @@ export class ApprovalService {
         founderId,
         agentId: approval.agentId,
         action: 'approval_rejected',
-        details: { approvalId, description: approval.actionDescription, reason } as unknown as Prisma.InputJsonValue,
+        details: { approvalId, reason } as unknown as Prisma.InputJsonValue,
         riskTier: approval.riskTier,
       },
     });
@@ -136,7 +122,7 @@ export class ApprovalService {
     return { success: true, approvalId };
   }
 
-  /** Edit and approve — founder modifies the action payload before approving. */
+  /** Edit and approve. */
   async editAndApprove(
     approvalId: string,
     founderId: string,
@@ -149,14 +135,14 @@ export class ApprovalService {
       where: { id: approvalId },
       data: {
         status: 'EDITED',
-        editedPayload: editedPayload as unknown as Prisma.InputJsonValue,
-        resolutionNote: reason,
-        resolvedAt: new Date(),
+        edits: editedPayload as unknown as Prisma.InputJsonValue,
+        decision: reason || 'Edited and approved',
+        decidedAt: new Date(),
       },
     });
 
     await this.prisma.task.update({
-      where: { id: approval.taskId },
+      where: { id: approval.taskId! },
       data: {
         status: 'IN_PROGRESS',
         result: editedPayload as unknown as Prisma.InputJsonValue,
@@ -168,7 +154,7 @@ export class ApprovalService {
         founderId,
         agentId: approval.agentId,
         action: 'approval_edited',
-        details: { approvalId, description: approval.actionDescription, edits: editedPayload } as unknown as Prisma.InputJsonValue,
+        details: { approvalId, edits: editedPayload } as unknown as Prisma.InputJsonValue,
         riskTier: approval.riskTier,
       },
     });

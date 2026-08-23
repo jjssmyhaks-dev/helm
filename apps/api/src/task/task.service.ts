@@ -11,12 +11,6 @@ export class TaskService {
       where: { id: taskId, founderId },
       include: {
         assignedAgent: { select: { id: true, name: true, layer: true } },
-        approval: true,
-        subTasks: {
-          include: {
-            assignedAgent: { select: { id: true, name: true } },
-          },
-        },
       },
     });
     if (!task) throw new NotFoundException('Task not found');
