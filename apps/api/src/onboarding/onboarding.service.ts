@@ -3,7 +3,7 @@ import { PrismaService } from '../database/prisma.service.js';
 import { LLMService } from '../llm/llm.service.js';
 import { ContextService } from '../context/context.service.js';
 
-interface OnboardingStep {
+export interface OnboardingStep {
   id: string;
   question: string;
   category: string;
@@ -11,7 +11,7 @@ interface OnboardingStep {
   followUp?: string;
 }
 
-interface OnboardingState {
+export interface OnboardingState {
   founderId: string;
   currentStep: number;
   completed: boolean;

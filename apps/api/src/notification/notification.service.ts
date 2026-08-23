@@ -14,7 +14,7 @@ interface NotificationPayload {
   metadata?: Record<string, unknown>;
 }
 
-interface StoredNotification {
+export interface StoredNotification {
   id: string;
   founderId: string;
   title: string;

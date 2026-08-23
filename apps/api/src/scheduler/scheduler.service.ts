@@ -81,7 +81,7 @@ export class SchedulerService implements OnModuleInit {
       // Remove existing repeatable job with same name
       const existingJobs = await this.scheduledQueue.getJobSchedulers();
       for (const existing of existingJobs) {
-        if (existing.name === job.name) {
+        if (existing.name && existing.name === job.name && existing.id) {
           await this.scheduledQueue.removeJobScheduler(existing.id);
         }
       }

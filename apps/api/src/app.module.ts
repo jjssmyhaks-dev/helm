@@ -19,8 +19,10 @@ import { OnboardingModule } from './onboarding/onboarding.module.js';
 import { SchedulerModule } from './scheduler/scheduler.module.js';
 import { NotificationModule } from './notification/notification.module.js';
 import { DashboardModule } from './dashboard/dashboard.module.js';
+import { HealthController } from './health.controller.js';
 
 @Module({
+  controllers: [HealthController],
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     DatabaseModule,

@@ -9,7 +9,7 @@ import { api } from '@/lib/api';
 
 export default function Home() {
   const [token, setToken] = useState<string | null>(null);
-  const [sidePanelOpen, setSidePanelOpen] = useState(true);
+  const [sidePanelOpen, setSidePanelOpen] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(null);
 
@@ -28,7 +28,7 @@ export default function Home() {
       const state = await api.getOnboardingState();
       setOnboardingComplete(state.completed);
     } catch {
-      setOnboardingComplete(true); // Skip onboarding check on error
+      setOnboardingComplete(true);
     }
   };
 
@@ -46,16 +46,8 @@ export default function Home() {
     setOnboardingComplete(null);
   };
 
-  const handleOnboardingComplete = () => {
-    setOnboardingComplete(true);
-  };
+  if (!token) return <AuthScreen onAuth={handleAuth} />;
 
-  // Not logged in
-  if (!token) {
-    return <AuthScreen onAuth={handleAuth} />;
-  }
-
-  // Loading onboarding state
   if (onboardingComplete === null) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-dark-950">
@@ -64,19 +56,12 @@ export default function Home() {
     );
   }
 
-  // Show onboarding for new founders
   if (!onboardingComplete) {
-    return (
-      <Onboarding
-        onComplete={handleOnboardingComplete}
-        onSkip={handleOnboardingComplete}
-      />
-    );
+    return <Onboarding onComplete={() => setOnboardingComplete(true)} onSkip={() => setOnboardingComplete(true)} />;
   }
 
-  // Main app
   return (
-    <div className="flex h-screen bg-dark-950">
+    <div className="flex h-screen bg-dark-950 overflow-hidden">
       {/* Main Chat Pane */}
       <div className="flex-1 flex flex-col min-w-0">
         <ChatPane
@@ -88,12 +73,27 @@ export default function Home() {
         />
       </div>
 
-      {/* Side Panel */}
-      {sidePanelOpen && (
-        <div className="w-[380px] border-l border-dark-700 flex flex-col bg-dark-900">
+      {/* Side Panel — slide-over on mobile, fixed on desktop */}
+      <>
+        {/* Backdrop on mobile */}
+        {sidePanelOpen && (
+          <div
+            className="fixed inset-0 bg-black/50 z-40 md:hidden"
+            onClick={() => setSidePanelOpen(false)}
+          />
+        )}
+        <div
+          className={`
+            fixed inset-y-0 right-0 z-50 w-[340px] bg-dark-900 border-l border-dark-700
+            transform transition-transform duration-300 ease-in-out
+            ${sidePanelOpen ? 'translate-x-0' : 'translate-x-full'}
+            md:relative md:translate-x-0 md:z-auto md:w-[380px]
+            ${!sidePanelOpen ? 'md:hidden' : ''}
+          `}
+        >
           <SidePanel token={token} />
         </div>
-      )}
+      </>
     </div>
   );
 }
