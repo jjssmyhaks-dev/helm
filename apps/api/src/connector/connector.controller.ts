@@ -1,51 +1,45 @@
-import { Controller, Get, Post, Delete, Param, Body, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
-import { ConnectorService } from './connector.service.js';
-import { IsString, IsOptional } from 'class-validator';
-
-class ConnectDto {
-  @IsString()
-  @IsOptional()
-  authCode?: string;
-
-  @IsString()
-  @IsOptional()
-  apiKey?: string;
-}
+import { ComposioService } from './composio.service.js';
 
 @ApiTags('Connectors')
 @ApiBearerAuth()
 @UseGuards(AuthGuard('jwt'))
 @Controller('connectors')
 export class ConnectorController {
-  constructor(private connectorService: ConnectorService) {}
+  constructor(private composioService: ComposioService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List all connectors and their status' })
+  @ApiOperation({ summary: 'List all connectors and their status (via Composio)' })
   async listConnectors(@Request() req: any) {
-    return this.connectorService.listConnectors(req.user.id);
+    return this.composioService.getConnectionStatus(req.user.id);
   }
 
-  @Post(':name/connect')
-  @ApiOperation({ summary: 'Initiate connection for a connector' })
-  async connect(
-    @Param('name') name: string,
-    @Body() dto: ConnectDto,
+  @Get(':name/actions')
+  @ApiOperation({ summary: 'List available actions for a connector' })
+  async getActions(@Param('name') name: string) {
+    return this.composioService.getActionsForApp(name);
+  }
+
+  @Get('tools/all')
+  @ApiOperation({ summary: 'Get all available tools across all connectors' })
+  async getAllTools(@Request() req: any) {
+    const session = await this.composioService.getSession(req.user.id);
+    return session.tools();
+  }
+
+  @Post('execute/:action')
+  @ApiOperation({ summary: 'Execute a Composio tool action' })
+  async executeAction(
+    @Param('action') action: string,
+    @Body() params: Record<string, unknown>,
     @Request() req: any,
   ) {
-    return this.connectorService.connect(req.user.id, name, dto);
-  }
-
-  @Delete(':name/disconnect')
-  @ApiOperation({ summary: 'Disconnect a connector' })
-  async disconnect(@Param('name') name: string, @Request() req: any) {
-    return this.connectorService.disconnect(req.user.id, name);
-  }
-
-  @Get(':name/health')
-  @ApiOperation({ summary: 'Check connector health status' })
-  async checkHealth(@Param('name') name: string, @Request() req: any) {
-    return this.connectorService.checkHealth(req.user.id, name);
+    try {
+      return await this.composioService.executeAction(req.user.id, action, params);
+    } catch (error: any) {
+      throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
+    }
   }
 }

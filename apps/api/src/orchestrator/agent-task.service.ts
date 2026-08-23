@@ -7,6 +7,7 @@ import { RiskTierService, TierClassification } from '../approval/risk-tier.servi
 import { ApprovalService } from '../approval/approval.service.js';
 import { ContextService } from '../context/context.service.js';
 import { TokenBudgetService } from '../queue/token-budget.service.js';
+import { ComposioService } from '../connector/composio.service.js';
 
 interface CreateTaskInput {
   title: string;
@@ -30,6 +31,7 @@ export class AgentTaskService {
     private approvalService: ApprovalService,
     private contextService: ContextService,
     private tokenBudget: TokenBudgetService,
+    private composio: ComposioService,
   ) {
     this.anthropic = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY,
@@ -278,6 +280,20 @@ export class AgentTaskService {
     tokenUsage?: { inputTokens: number; outputTokens: number; model: string };
   }> {
     const agent = task.assignedAgent;
+
+    // Fetch available Composio tools for this founder
+    let toolsContext = '';
+    try {
+      const session = await this.composio.getSession(task.founderId);
+      const tools = await session.tools();
+      if (tools && tools.length > 0) {
+        const toolList = tools.slice(0, 20).map((t: any) => `- ${t.name}: ${t.description || 'No description'}`).join('\n');
+        toolsContext = `\n\nAvailable external tools you can use (via Composio):\n${toolList}\n\nTo use a tool, include in your response: { "useTool": { "action": "TOOL_NAME", "params": { ... } } }`;
+      }
+    } catch (err) {
+      // Composio not available - continue without tools
+    }
+
     const message = await this.anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 2048,
@@ -291,6 +307,7 @@ Description: "${task.description}"
 
 Relevant context:
 ${context.length > 0 ? context.map((c) => `- ${c}`).join('\n') : 'No prior context.'}
+${toolsContext}
 
 Execute this task. Produce a result as a JSON object:
 {
@@ -301,10 +318,12 @@ Execute this task. Produce a result as a JSON object:
   "confidence": 0.85,
   "isIrreversible": false,
   "signal": null,
+  "useTool": null,
   "contextUpdate": { "key": "some_key", "value": "what you learned", "tags": ["tag1"] }
 }
 
 If your work produces a cross-layer signal (e.g., marketing detects underperforming leads, ops detects delay), include it in "signal" with the correct type and payload.
+If you need to use an external tool, include it in "useTool".
 If you learned something important for future decisions, include a "contextUpdate" to save to memory.`,
         },
       ],
@@ -318,7 +337,27 @@ If you learned something important for future decisions, include a "contextUpdat
     };
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
-      return { ...JSON.parse(jsonMatch[0]), tokenUsage };
+      const parsed = JSON.parse(jsonMatch[0]);
+
+      // Execute Composio tool if agent requested it
+      if (parsed.useTool && parsed.useTool.action) {
+        try {
+          this.logger.log(`Agent requesting tool: ${parsed.useTool.action}`);
+          const session = await this.composio.getSession(task.founderId);
+          const toolResult = await session.execute(parsed.useTool.action, parsed.useTool.params || {});
+          // Merge tool result into the task data
+          parsed.data = {
+            ...parsed.data,
+            toolResult,
+          };
+          parsed.toolUsed = parsed.useTool.action;
+        } catch (err) {
+          this.logger.error(`Tool execution failed: ${err}`);
+          parsed.toolError = err instanceof Error ? err.message : String(err);
+        }
+      }
+
+      return { ...parsed, tokenUsage };
     }
 
     return {

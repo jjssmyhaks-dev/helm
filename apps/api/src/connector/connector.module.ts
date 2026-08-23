@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
-import { ConnectorService } from './connector.service.js';
+import { ComposioService } from './composio.service.js';
 import { ConnectorController } from './connector.controller.js';
 
 @Module({
   controllers: [ConnectorController],
-  providers: [ConnectorService],
-  exports: [ConnectorService],
+  providers: [ComposioService],
+  exports: [ComposioService],
 })
 export class ConnectorModule {}
