@@ -14,6 +14,7 @@ import {
   MessageSquare,
   Plus,
   BarChart3,
+  Settings,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { UserButton } from '@clerk/nextjs';
@@ -223,6 +224,13 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
             title="Dashboard"
           >
             <BarChart3 className="w-5 h-5" />
+          </button>
+          <button
+            onClick={() => router.push('/settings')}
+            className="p-2 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-white transition-colors"
+            title="Settings"
+          >
+            <Settings className="w-5 h-5" />
           </button>
           <button
             onClick={() => setShowSessions(!showSessions)}

@@ -199,6 +199,11 @@ class ApiClient {
     return this.request<any>('GET', '/dashboard');
   }
 
+  // Settings
+  async getAutonomySettings() {
+    return this.request<any>('GET', '/founder/autonomy-settings');
+  }
+
   // Founder
   async getProfile() {
     return this.request<any>('GET', '/founder/profile');

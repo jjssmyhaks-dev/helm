@@ -1,11 +1,10 @@
 import { Module } from '@nestjs/common';
-import { STTService } from './stt.service.js';
-import { TTSService } from './tts.service.js';
+import { VoiceService } from './voice.service.js';
 import { VoiceController } from './voice.controller.js';
 
 @Module({
+  providers: [VoiceService],
   controllers: [VoiceController],
-  providers: [STTService, TTSService],
-  exports: [STTService, TTSService],
+  exports: [VoiceService],
 })
 export class VoiceModule {}

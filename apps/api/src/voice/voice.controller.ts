@@ -1,137 +1,38 @@
-import { Controller, Post, Body, UseGuards, Request, HttpException, HttpStatus, Get } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { AuthGuard } from '@nestjs/passport';
-import { STTService } from './stt.service.js';
-import { TTSService } from './tts.service.js';
-import { ChatService } from '../chat/chat.service.js';
-import { IsString, IsOptional } from 'class-validator';
+import { Controller, Post, Get, Body, Req, Res } from '@nestjs/common';
+import { VoiceService } from './voice.service.js';
 
-class TranscribeDto {
-  @IsString()
-  audioBase64!: string;
-
-  @IsString()
-  @IsOptional()
-  mimeType?: string;
-}
-
-class SynthesizeDto {
-  @IsString()
-  text!: string;
-
-  @IsString()
-  @IsOptional()
-  voiceId?: string;
-}
-
-class VoiceMessageDto {
-  @IsString()
-  audioBase64!: string;
-
-  @IsString()
-  @IsOptional()
-  sessionId?: string;
-}
-
-@ApiTags('Voice')
-@ApiBearerAuth()
-@UseGuards(AuthGuard('jwt'))
 @Controller('voice')
 export class VoiceController {
-  constructor(
-    private stt: STTService,
-    private tts: TTSService,
-    private chatService: ChatService,
-  ) {}
-
-  @Get('providers')
-  @ApiOperation({ summary: 'Get available voice providers and status' })
-  async getProviders() {
-    return {
-      stt: {
-        provider: this.stt.getProvider(),
-        available: this.stt.isAvailable(),
-      },
-      tts: {
-        provider: this.tts.getProvider(),
-        available: this.tts.isAvailable(),
-      },
-    };
-  }
+  constructor(private voiceService: VoiceService) {}
 
   @Post('transcribe')
-  @ApiOperation({ summary: 'Transcribe audio to text (STT)' })
-  async transcribe(@Body() dto: TranscribeDto) {
-    if (!this.stt.isAvailable()) {
-      throw new HttpException('STT provider not configured', HttpStatus.SERVICE_UNAVAILABLE);
-    }
-
-    const audioBuffer = Buffer.from(dto.audioBase64, 'base64');
-    const result = await this.stt.transcribe(audioBuffer, dto.mimeType);
-
-    return {
-      text: result.text,
-      confidence: result.confidence,
-      language: result.language,
-      duration: result.duration,
-    };
+  async transcribe(@Body() body: { audio: string; mimeType?: string }, @Req() req: any) {
+    // Accept base64 audio from frontend
+    const audioBuffer = Buffer.from(body.audio, 'base64');
+    const result = await this.voiceService.transcribe(audioBuffer, body.mimeType || 'audio/webm');
+    return result;
   }
 
   @Post('synthesize')
-  @ApiOperation({ summary: 'Synthesize text to speech (TTS)' })
-  async synthesize(@Body() dto: SynthesizeDto) {
-    if (!this.tts.isAvailable()) {
-      throw new HttpException('TTS provider not configured', HttpStatus.SERVICE_UNAVAILABLE);
-    }
-
-    const result = await this.tts.synthesize(dto.text, dto.voiceId);
-
-    return {
-      audioBase64: result.audioBuffer.toString('base64'),
-      mimeType: result.mimeType,
-      duration: result.duration,
-    };
+  async synthesize(
+    @Body() body: { text: string; voiceId?: string },
+    @Res() res: any,
+  ) {
+    const result = await this.voiceService.synthesize(body.text, body.voiceId);
+    res.set({
+      'Content-Type': result.contentType,
+      'Content-Length': result.audio.length,
+    });
+    res.send(result.audio);
   }
 
-  @Post('message')
-  @ApiOperation({ summary: 'Send voice message — transcribe audio, process through Helm, return response' })
-  async voiceMessage(@Body() dto: VoiceMessageDto, @Request() req: any) {
-    if (!this.stt.isAvailable()) {
-      throw new HttpException('STT provider not configured', HttpStatus.SERVICE_UNAVAILABLE);
-    }
+  @Get('voices')
+  async listVoices() {
+    return this.voiceService.listVoices();
+  }
 
-    // 1. Transcribe audio
-    const audioBuffer = Buffer.from(dto.audioBase64, 'base64');
-    const transcription = await this.stt.transcribe(audioBuffer);
-
-    if (!transcription.text.trim()) {
-      throw new HttpException('No speech detected in audio', HttpStatus.BAD_REQUEST);
-    }
-
-    // 2. Process through chat
-    const result = await this.chatService.processMessage(
-      req.user.id,
-      transcription.text,
-      dto.sessionId,
-    );
-
-    // 3. Optionally synthesize response
-    let audioResponse: string | undefined;
-    if (this.tts.isAvailable()) {
-      try {
-        const ttsResult = await this.tts.synthesize(result.message.content);
-        audioResponse = ttsResult.audioBuffer.toString('base64');
-      } catch (err) {
-        // TTS failure is non-critical
-      }
-    }
-
-    return {
-      transcription: transcription.text,
-      message: result.message,
-      sessionId: result.sessionId,
-      spawnedTasks: result.spawnedTasks,
-      audioResponse,
-    };
+  @Get('health')
+  async health() {
+    return this.voiceService.healthCheck();
   }
 }

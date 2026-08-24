@@ -1,30 +1,31 @@
-import { Controller, Get, Patch, Body, UseGuards, Request } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { Controller, Get, Patch, Body, Request } from '@nestjs/common';
 import { FounderService } from './founder.service.js';
-import { IsString, IsOptional } from 'class-validator';
+import { SettingsService } from './settings.service.js';
 
-class UpdateProfileDto {
-  @IsString() @IsOptional() name?: string;
-  @IsString() @IsOptional() businessName?: string;
-  @IsString() @IsOptional() industry?: string;
-  @IsString() @IsOptional() businessType?: string;
-}
-
-@ApiTags('Founder')
-@ApiBearerAuth()
 @Controller('founder')
 export class FounderController {
-  constructor(private founderService: FounderService) {}
+  constructor(
+    private founderService: FounderService,
+    private settingsService: SettingsService,
+  ) {}
 
   @Get('profile')
-  @ApiOperation({ summary: 'Get founder profile' })
   async getProfile(@Request() req: any) {
     return this.founderService.getProfile(req.user?.id || '');
   }
 
   @Patch('profile')
-  @ApiOperation({ summary: 'Update founder profile' })
-  async updateProfile(@Body() dto: UpdateProfileDto, @Request() req: any) {
+  async updateProfile(@Body() dto: { name?: string; businessName?: string; industry?: string; businessType?: string }, @Request() req: any) {
     return this.founderService.updateProfile(req.user?.id || '', dto);
+  }
+
+  @Get('autonomy-settings')
+  async getAutonomySettings(@Request() req: any) {
+    return this.settingsService.getAutonomySettings(req.user?.id || '');
+  }
+
+  @Patch('autonomy-settings')
+  async updateAutonomySettings(@Body() settings: Record<string, any>, @Request() req: any) {
+    return this.settingsService.updateAutonomySettings(req.user?.id || '', settings);
   }
 }

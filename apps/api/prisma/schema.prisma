@@ -61,6 +61,7 @@ model Founder {
   businessType      String?  @map("business_type")
   industry          String?
   onboardingComplete Boolean @default(false) @map("onboarding_complete")
+  autonomySettings  Json     @default("{}") @map("autonomy_settings")
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
