@@ -1,13 +1,17 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service.js';
 import { EventBusService } from '../event/event-bus.service.js';
+import { NotificationService } from '../notification/notification.service.js';
 import { RiskTier, Prisma } from '@prisma/client';
 
 @Injectable()
 export class ApprovalService {
+  private readonly logger = new Logger(ApprovalService.name);
+
   constructor(
     private prisma: PrismaService,
     private eventBus: EventBusService,
+    private notificationService: NotificationService,
   ) {}
 
   /**
@@ -48,6 +52,19 @@ export class ApprovalService {
         riskTier: params.riskTier,
       },
     });
+
+    // Send email notification for approval requests
+    try {
+      const agent = await this.prisma.agent.findUnique({ where: { id: params.agentId } });
+      await this.notificationService.notifyApprovalRequired(
+        params.founderId,
+        agent?.name || 'Agent',
+        params.actionDescription,
+        approval.id,
+      );
+    } catch (err) {
+      this.logger.error(`Failed to send approval notification: ${err}`);
+    }
 
     return approval;
   }
