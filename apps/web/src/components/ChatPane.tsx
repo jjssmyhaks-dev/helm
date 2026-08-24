@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
+import { MarkdownRenderer } from './MarkdownRenderer';
 import {
   Send,
   PanelRightOpen,
@@ -10,7 +11,11 @@ import {
   Anchor,
   Bot,
   Loader2,
+  MessageSquare,
+  Plus,
+  BarChart3,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { UserButton } from '@clerk/nextjs';
 
 interface ChatMessage {
@@ -18,6 +23,13 @@ interface ChatMessage {
   role: 'founder' | 'agent' | 'system';
   content: string;
   createdAt: string;
+}
+
+interface ChatSession {
+  id: string;
+  title: string | null;
+  updatedAt: string;
+  messages?: { content: string }[];
 }
 
 interface Props {
@@ -29,16 +41,67 @@ interface Props {
 }
 
 export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel, onLogout }: Props) {
+  const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [showSessions, setShowSessions] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     api.setToken(token);
   }, [token]);
+
+  // Load sessions list
+  const loadSessions = useCallback(async () => {
+    try {
+      const sessionList = await api.listSessions();
+      setSessions(sessionList);
+    } catch {
+      // silently fail
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSessions();
+  }, [loadSessions]);
+
+  // Load messages when sessionId changes
+  useEffect(() => {
+    if (sessionId) {
+      loadHistory(sessionId);
+    } else {
+      setMessages([]);
+    }
+  }, [sessionId]);
+
+  // Also reload sessions after a new message is sent (to pick up new session)
+  useEffect(() => {
+    if (messages.length > 0) {
+      loadSessions();
+    }
+  }, [messages.length, loadSessions]);
+
+  const loadHistory = async (sid: string) => {
+    try {
+      const history = await api.getChatHistory(sid);
+      if (history?.messages) {
+        setMessages(
+          history.messages.map((m: any) => ({
+            id: m.id,
+            role: m.role === 'FOUNDER' ? 'founder' : 'agent',
+            content: m.content,
+            createdAt: m.createdAt,
+          }))
+        );
+      }
+    } catch {
+      setMessages([]);
+    }
+  };
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -58,42 +121,43 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
     setInput('');
     setSending(true);
 
-    // Add placeholder for streaming response
     const streamingId = `streaming-${Date.now()}`;
-    setMessages((prev) => [...prev, {
-      id: streamingId,
-      role: 'agent',
-      content: '',
-      createdAt: new Date().toISOString(),
-    }]);
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: streamingId,
+        role: 'agent',
+        content: '',
+        createdAt: new Date().toISOString(),
+      },
+    ]);
 
     try {
       await api.streamMessage(
         userMessage.content,
         sessionId || undefined,
-        // onChunk: update the streaming message
         (chunk: string) => {
-          setMessages((prev) => prev.map((m) =>
-            m.id === streamingId
-              ? { ...m, content: m.content + chunk }
-              : m,
-          ));
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === streamingId ? { ...m, content: m.content + chunk } : m
+            )
+          );
         },
-        // onSession: update session ID
         (newSessionId: string) => {
           onSessionChange(newSessionId);
         },
-        // onDone: finalize
         () => {
           setSending(false);
-        },
+        }
       );
     } catch (err: any) {
-      setMessages((prev) => prev.map((m) =>
-        m.id === streamingId
-          ? { ...m, content: `Error: ${err.message}` }
-          : m,
-      ));
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === streamingId
+            ? { ...m, content: `Error: ${err.message}` }
+            : m
+        )
+      );
       setSending(false);
     }
   };
@@ -108,15 +172,12 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
   const toggleRecording = async () => {
     if (isRecording) {
       setIsRecording(false);
-      // In production: stop STT, send transcript
       return;
     }
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setIsRecording(true);
-      // In production: send stream to STT provider, on result call sendMessage with transcript
-      // For now, simulate with a timeout
       setTimeout(() => {
         setIsRecording(false);
         stream.getTracks().forEach((t) => t.stop());
@@ -126,8 +187,19 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
     }
   };
 
+  const newChat = () => {
+    onSessionChange('');
+    setMessages([]);
+    setShowSessions(false);
+  };
+
+  const switchSession = (sid: string) => {
+    onSessionChange(sid);
+    setShowSessions(false);
+  };
+
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative">
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-3 border-b border-dark-700 bg-dark-900/80 backdrop-blur-sm">
         <div className="flex items-center gap-2">
@@ -139,13 +211,38 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
         </div>
         <div className="flex items-center gap-2">
           <button
+            onClick={newChat}
+            className="p-2 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-white transition-colors"
+            title="New chat"
+          >
+            <Plus className="w-5 h-5" />
+          </button>
+          <button
+            onClick={() => router.push('/dashboard')}
+            className="p-2 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-white transition-colors"
+            title="Dashboard"
+          >
+            <BarChart3 className="w-5 h-5" />
+          </button>
+          <button
+            onClick={() => setShowSessions(!showSessions)}
+            className={`p-2 rounded-lg transition-colors ${
+              showSessions
+                ? 'bg-helm-600/20 text-helm-400'
+                : 'hover:bg-dark-700 text-dark-400 hover:text-white'
+            }`}
+            title="Chat history"
+          >
+            <MessageSquare className="w-5 h-5" />
+          </button>
+          <button
             onClick={onToggleSidePanel}
             className="p-2 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-white transition-colors"
             title="Toggle side panel"
           >
             <PanelRightOpen className="w-5 h-5" />
           </button>
-          <UserButton 
+          <UserButton
             appearance={{
               elements: {
                 avatarBox: 'w-8 h-8',
@@ -154,6 +251,49 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
           />
         </div>
       </header>
+
+      {/* Session History Dropdown */}
+      {showSessions && (
+        <div className="absolute top-[57px] right-4 z-50 w-80 max-h-96 overflow-y-auto bg-dark-900 border border-dark-700 rounded-xl shadow-2xl">
+          <div className="p-3 border-b border-dark-700">
+            <h3 className="text-sm font-semibold text-white">Chat History</h3>
+          </div>
+          {sessions.length === 0 ? (
+            <div className="p-4 text-center text-dark-500 text-sm">
+              No conversations yet
+            </div>
+          ) : (
+            <div className="py-1">
+              {sessions.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => switchSession(s.id)}
+                  className={`w-full text-left px-3 py-2.5 hover:bg-dark-800 transition-colors ${
+                    s.id === sessionId ? 'bg-dark-800 border-l-2 border-helm-500' : ''
+                  }`}
+                >
+                  <div className="text-sm text-dark-200 truncate">
+                    {s.title || 'Untitled conversation'}
+                  </div>
+                  <div className="text-xs text-dark-500 mt-0.5">
+                    {new Date(s.updatedAt).toLocaleDateString('en-IN', {
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                    {s.messages?.[0] && (
+                      <span className="ml-2">
+                        — {s.messages[0].content.slice(0, 40)}...
+                      </span>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-6">
@@ -210,7 +350,11 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
                   : 'bg-red-500/10 text-red-400 border border-red-500/20'
               }`}
             >
-              {msg.content}
+              {msg.role === 'agent' ? (
+                <MarkdownRenderer content={msg.content} />
+              ) : (
+                msg.content
+              )}
             </div>
             {msg.role === 'founder' && (
               <div className="w-8 h-8 rounded-lg bg-helm-600 flex items-center justify-center flex-shrink-0 mt-1">

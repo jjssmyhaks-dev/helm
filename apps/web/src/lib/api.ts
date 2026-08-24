@@ -194,6 +194,12 @@ class ApiClient {
   }
 
   // Founder
+  // Dashboard
+  async getDashboard() {
+    return this.request<any>('GET', '/dashboard');
+  }
+
+  // Founder
   async getProfile() {
     return this.request<any>('GET', '/founder/profile');
   }
