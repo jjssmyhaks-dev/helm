@@ -17,13 +17,14 @@ export class OnboardingController {
 
   @Get()
   @ApiOperation({ summary: 'Get current onboarding state and question' })
-  getState(@Request() req: any) {
-    const question = this.onboardingService.getCurrentQuestion(req.user.id);
-    const state = this.onboardingService.getState(req.user.id);
+  async getState(@Request() req: any) {
+    const question = await this.onboardingService.getCurrentQuestion(req.user.id);
     return {
-      ...question,
-      completed: state.completed,
-      answers: state.answers,
+      step: question.step,
+      progress: question.progress,
+      greeting: question.greeting,
+      completed: question.progress === 100,
+      answers: question.answers,
     };
   }
 
@@ -35,8 +36,8 @@ export class OnboardingController {
 
   @Post('skip')
   @ApiOperation({ summary: 'Skip onboarding' })
-  skip(@Request() req: any) {
-    this.onboardingService.skipOnboarding(req.user.id);
+  async skip(@Request() req: any) {
+    await this.onboardingService.skipOnboarding(req.user.id);
     return { status: 'skipped' };
   }
 }

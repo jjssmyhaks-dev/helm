@@ -18,6 +18,7 @@ import {
   Sparkles,
   ArrowUp,
 } from 'lucide-react';
+import { NotificationBell } from './NotificationBell';
 import { UserButton } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 
@@ -186,6 +187,7 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
             <MessageSquare className="w-4 h-4" />
           </button>
           <div className="w-px h-5 bg-surface-300 mx-1" />
+          <NotificationBell token={token} />
           <button onClick={onToggleSidePanel} className="p-2 rounded-lg hover:bg-surface-200 text-surface-600 hover:text-white transition-all duration-150" title="Panel">
             <PanelRightOpen className="w-4 h-4" />
           </button>

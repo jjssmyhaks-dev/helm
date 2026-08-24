@@ -1,42 +1,31 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { api } from '@/lib/api';
 import { ActivityFeed } from './ActivityFeed';
 import { ApprovalQueue } from './ApprovalQueue';
 import { ConnectorsPanel } from './ConnectorsPanel';
 import { ChevronDown, ChevronUp, Zap, Shield, Plug } from 'lucide-react';
 
-interface Props {
-  token: string;
-}
-
+interface Props { token: string; }
 type PanelSection = 'activity' | 'approvals' | 'connectors';
 
 export function SidePanel({ token }: Props) {
   const [expandedSection, setExpandedSection] = useState<PanelSection>('activity');
   const [approvalCount, setApprovalCount] = useState(0);
 
-  useEffect(() => {
-    api.setToken(token);
-  }, [token]);
+  useEffect(() => { api.setToken(token); }, [token]);
 
-  // Poll for approval count
   useEffect(() => {
     const poll = async () => {
-      try {
-        const approvals = await api.getPendingApprovals();
-        setApprovalCount(approvals.length);
-      } catch {}
+      try { const a = await api.getPendingApprovals(); setApprovalCount(a.length); } catch {}
     };
     poll();
     const interval = setInterval(poll, 10000);
     return () => clearInterval(interval);
   }, [token]);
 
-  const toggleSection = (section: PanelSection) => {
-    setExpandedSection(expandedSection === section ? '' as any : section);
-  };
+  const toggle = (s: PanelSection) => setExpandedSection(expandedSection === s ? ('' as any) : s);
 
   const sections: { id: PanelSection; label: string; icon: any; badge?: number }[] = [
     { id: 'activity', label: 'Live Activity', icon: Zap },
@@ -45,43 +34,28 @@ export function SidePanel({ token }: Props) {
   ];
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <div className="px-4 py-3 border-b border-dark-700">
-        <h3 className="text-sm font-semibold text-white">Helm Control Panel</h3>
+    <div className="flex flex-col h-full overflow-hidden bg-surface-0">
+      <div className="px-4 py-3 border-b border-surface-300/50">
+        <h3 className="text-xs font-semibold text-surface-600 uppercase tracking-wider">Control Panel</h3>
       </div>
-
       <div className="flex-1 overflow-y-auto">
-        {sections.map((section) => (
-          <div key={section.id} className="border-b border-dark-700">
-            {/* Section header */}
-            <button
-              onClick={() => toggleSection(section.id)}
-              className="w-full flex items-center justify-between px-4 py-3 hover:bg-dark-800 transition-colors"
-            >
-              <div className="flex items-center gap-2">
-                <section.icon className="w-4 h-4 text-dark-400" />
-                <span className="text-sm font-medium text-dark-200">{section.label}</span>
-                {section.badge !== undefined && section.badge > 0 && (
-                  <span className="px-1.5 py-0.5 rounded-full bg-helm-600 text-white text-xs font-medium">
-                    {section.badge}
-                  </span>
+        {sections.map((s) => (
+          <div key={s.id} className="border-b border-surface-300/30">
+            <button onClick={() => toggle(s.id)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-200/50 transition-colors">
+              <div className="flex items-center gap-2.5">
+                <s.icon className="w-4 h-4 text-surface-600" />
+                <span className="text-sm font-medium text-surface-800">{s.label}</span>
+                {s.badge !== undefined && s.badge > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full bg-helm-500 text-white text-[10px] font-bold">{s.badge}</span>
                 )}
               </div>
-              {expandedSection === section.id ? (
-                <ChevronUp className="w-4 h-4 text-dark-500" />
-              ) : (
-                <ChevronDown className="w-4 h-4 text-dark-500" />
-              )}
+              {expandedSection === s.id ? <ChevronUp className="w-4 h-4 text-surface-600" /> : <ChevronDown className="w-4 h-4 text-surface-600" />}
             </button>
-
-            {/* Section content */}
-            {expandedSection === section.id && (
+            {expandedSection === s.id && (
               <div className="px-4 pb-4">
-                {section.id === 'activity' && <ActivityFeed token={token} />}
-                {section.id === 'approvals' && (
-                  <ApprovalQueue token={token} onApprovalChange={setApprovalCount} />
-                )}
-                {section.id === 'connectors' && <ConnectorsPanel token={token} />}
+                {s.id === 'activity' && <ActivityFeed token={token} />}
+                {s.id === 'approvals' && <ApprovalQueue token={token} onApprovalChange={setApprovalCount} />}
+                {s.id === 'connectors' && <ConnectorsPanel token={token} />}
               </div>
             )}
           </div>
