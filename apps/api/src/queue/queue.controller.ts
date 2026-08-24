@@ -1,12 +1,11 @@
 import { Controller, Get, UseGuards, Request } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { AuthGuard } from '@nestjs/passport';
+import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ClerkGuard } from '../auth/clerk.guard.js';
 import { TokenBudgetService } from './token-budget.service.js';
 import { RateLimiterService } from './rate-limiter.service.js';
 
 @ApiTags('Budget & Limits')
-@ApiBearerAuth()
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(ClerkGuard)
 @Controller('budget')
 export class QueueController {
   constructor(

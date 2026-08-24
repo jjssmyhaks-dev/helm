@@ -1,6 +1,6 @@
 import { Controller, Get, Patch, Param, Query, Body, UseGuards, Request } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
-import { AuthGuard } from '@nestjs/passport';
+import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { ClerkGuard } from '../auth/clerk.guard.js';
 import { TaskService } from './task.service.js';
 import { TaskStatus } from '@prisma/client';
 import { IsEnum, IsOptional } from 'class-validator';
@@ -11,8 +11,7 @@ class UpdateTaskStatusDto {
 }
 
 @ApiTags('Tasks')
-@ApiBearerAuth()
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(ClerkGuard)
 @Controller('tasks')
 export class TaskController {
   constructor(private taskService: TaskService) {}

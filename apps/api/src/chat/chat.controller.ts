@@ -1,6 +1,6 @@
 import { Controller, Post, Get, Body, Param, Query, UseGuards, Request, HttpException, HttpStatus, Sse, MessageEvent } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
-import { AuthGuard } from '@nestjs/passport';
+import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { ClerkGuard } from '../auth/clerk.guard.js';
 import { ChatService } from './chat.service.js';
 import { RateLimiterService } from '../queue/rate-limiter.service.js';
 import { Observable } from 'rxjs';
@@ -25,8 +25,7 @@ class SendVoiceDto {
 }
 
 @ApiTags('Chat')
-@ApiBearerAuth()
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(ClerkGuard)
 @Controller('chat')
 export class ChatController {
   constructor(

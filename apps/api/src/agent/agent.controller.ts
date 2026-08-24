@@ -1,11 +1,10 @@
 import { Controller, Get, Param, Query, UseGuards, Request } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
-import { AuthGuard } from '@nestjs/passport';
+import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { ClerkGuard } from '../auth/clerk.guard.js';
 import { AgentService } from './agent.service.js';
 
 @ApiTags('Agents')
-@ApiBearerAuth()
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(ClerkGuard)
 @Controller('agents')
 export class AgentController {
   constructor(private agentService: AgentService) {}

@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Delete, Body, Param, UseGuards, Request } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { AuthGuard } from '@nestjs/passport';
+import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ClerkGuard } from '../auth/clerk.guard.js';
 import { ContextService } from './context.service.js';
 import { IsString, IsArray, IsOptional } from 'class-validator';
 
@@ -17,8 +17,7 @@ class SaveContextDto {
 }
 
 @ApiTags('Context')
-@ApiBearerAuth()
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(ClerkGuard)
 @Controller('context')
 export class ContextController {
   constructor(private contextService: ContextService) {}

@@ -1,11 +1,10 @@
 import { Controller, Get, Post, Param, Body, UseGuards, Request, HttpException, HttpStatus } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { AuthGuard } from '@nestjs/passport';
+import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ClerkGuard } from '../auth/clerk.guard.js';
 import { ComposioService } from './composio.service.js';
 
 @ApiTags('Connectors')
-@ApiBearerAuth()
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(ClerkGuard)
 @Controller('connectors')
 export class ConnectorController {
   constructor(private composioService: ComposioService) {}

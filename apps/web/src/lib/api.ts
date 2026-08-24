@@ -9,36 +9,35 @@ class ApiClient {
     this.token = token;
   }
 
-  async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  private getHeaders(): Record<string, string> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
     if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
+      headers['x-founder-id'] = this.token;
     }
+    return headers;
+  }
 
+  async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     try {
       const res = await fetch(`${API_BASE}${path}`, {
         method,
-        headers,
+        headers: this.getHeaders(),
         body: body ? JSON.stringify(body) : undefined,
       });
 
       if (!res.ok) {
         const error = await res.json().catch(() => ({ message: res.statusText }));
         const msg = error.message || `API error: ${res.status}`;
-
-        // Don't show toast for 404s or auth errors (expected)
         if (res.status !== 404 && res.status !== 401) {
           toast.error(msg);
         }
-
         throw new Error(msg);
       }
 
       return res.json();
     } catch (err: any) {
-      // Network error
       if (err.message?.includes('fetch') || err.message?.includes('network') || err.name === 'TypeError') {
         toast.error('Cannot reach the Helm API server. Is it running on port 4000?');
       }
@@ -74,16 +73,9 @@ class ApiClient {
     onSession: (sessionId: string) => void,
     onDone: () => void,
   ): Promise<void> {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
-    }
-
     const response = await fetch(`${API_BASE}/chat/stream`, {
       method: 'POST',
-      headers,
+      headers: this.getHeaders(),
       body: JSON.stringify({ content, sessionId }),
     });
 

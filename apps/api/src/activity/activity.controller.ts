@@ -1,11 +1,10 @@
 import { Controller, Get, Param, Query, UseGuards, Request } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { AuthGuard } from '@nestjs/passport';
+import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ClerkGuard } from '../auth/clerk.guard.js';
 import { ActivityService } from './activity.service.js';
 
 @ApiTags('Activity')
-@ApiBearerAuth()
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(ClerkGuard)
 @Controller('activity')
 export class ActivityController {
   constructor(private activityService: ActivityService) {}

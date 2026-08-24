@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Param, Body, UseGuards, Request } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
-import { AuthGuard } from '@nestjs/passport';
+import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { ClerkGuard } from '../auth/clerk.guard.js';
 import { ApprovalService } from './approval.service.js';
 import { IsString, IsOptional, IsObject } from 'class-validator';
 
@@ -15,8 +15,7 @@ class ApprovalActionDto {
 }
 
 @ApiTags('Approvals')
-@ApiBearerAuth()
-@UseGuards(AuthGuard('jwt'))
+@UseGuards(ClerkGuard)
 @Controller('approvals')
 export class ApprovalController {
   constructor(private approvalService: ApprovalService) {}
