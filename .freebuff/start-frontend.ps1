@@ -1,0 +1,1 @@
+Start-Process -FilePath "C:\Users\Ashif\.openclaw-autoclaw\agents\lanework\workspace\lanework-next\helm\apps\web\node_modules\.bin\next.CMD" -ArgumentList "dev -p 3456" -WorkingDirectory "C:\Users\Ashif\.openclaw-autoclaw\agents\lanework\workspace\lanework-next\helm\apps\web" -WindowStyle Hidden -PassThru | ForEach-Object { Write-Output "PID: $($_.Id)" }

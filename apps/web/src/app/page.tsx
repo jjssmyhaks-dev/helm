@@ -5,6 +5,7 @@ import { useUser, useAuth } from '@clerk/nextjs';
 import { ChatPane } from '@/components/ChatPane';
 import { SidePanel } from '@/components/SidePanel';
 import { Onboarding } from '@/components/Onboarding';
+import { CommandPalette } from '@/components/CommandPalette';
 import { api } from '@/lib/api';
 
 export default function Home() {
@@ -13,14 +14,26 @@ export default function Home() {
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(null);
+  const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false);
 
   useEffect(() => {
     if (isSignedIn && user) {
-      // Set the token for API calls (Clerk session token)
       api.setToken(user.id);
       checkOnboarding();
     }
   }, [isSignedIn, user]);
+
+  // Global Cmd+K listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setCmdPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const checkOnboarding = async () => {
     try {
@@ -40,7 +53,6 @@ export default function Home() {
     );
   }
 
-  // Not signed in — Clerk handles redirect
   if (!isSignedIn) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-dark-950">
@@ -51,7 +63,6 @@ export default function Home() {
     );
   }
 
-  // Loading onboarding state
   if (onboardingComplete === null) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-dark-950">
@@ -60,7 +71,6 @@ export default function Home() {
     );
   }
 
-  // Show onboarding for new founders
   if (!onboardingComplete) {
     return (
       <Onboarding
@@ -70,9 +80,11 @@ export default function Home() {
     );
   }
 
-  // Main app
   return (
     <div className="flex h-screen bg-dark-950 overflow-hidden">
+      {/* Command Palette */}
+      <CommandPalette open={cmdPaletteOpen} onClose={() => setCmdPaletteOpen(false)} />
+
       {/* Main Chat Pane */}
       <div className="flex-1 flex flex-col min-w-0">
         <ChatPane
@@ -84,7 +96,7 @@ export default function Home() {
         />
       </div>
 
-      {/* Side Panel — slide-over on mobile, fixed on desktop */}
+      {/* Side Panel */}
       <>
         {sidePanelOpen && (
           <div

@@ -1,3 +1,5 @@
+import { toast } from 'sonner';
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
 
 class ApiClient {
@@ -7,7 +9,7 @@ class ApiClient {
     this.token = token;
   }
 
-  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  async request<T>(method: string, path: string, body?: unknown): Promise<T> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
@@ -15,18 +17,33 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
 
-    const res = await fetch(`${API_BASE}${path}`, {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-    });
+    try {
+      const res = await fetch(`${API_BASE}${path}`, {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+      });
 
-    if (!res.ok) {
-      const error = await res.json().catch(() => ({ message: res.statusText }));
-      throw new Error(error.message || `API error: ${res.status}`);
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({ message: res.statusText }));
+        const msg = error.message || `API error: ${res.status}`;
+
+        // Don't show toast for 404s or auth errors (expected)
+        if (res.status !== 404 && res.status !== 401) {
+          toast.error(msg);
+        }
+
+        throw new Error(msg);
+      }
+
+      return res.json();
+    } catch (err: any) {
+      // Network error
+      if (err.message?.includes('fetch') || err.message?.includes('network') || err.name === 'TypeError') {
+        toast.error('Cannot reach the Helm API server. Is it running on port 4000?');
+      }
+      throw err;
     }
-
-    return res.json();
   }
 
   // Auth
@@ -193,7 +210,6 @@ class ApiClient {
     return this.request<any>('POST', '/onboarding/skip');
   }
 
-  // Founder
   // Dashboard
   async getDashboard() {
     return this.request<any>('GET', '/dashboard');

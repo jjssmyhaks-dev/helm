@@ -1,7 +1,7 @@
 'use client';
 
 import { SignIn } from '@clerk/nextjs';
-import { Anchor } from 'lucide-react';
+import { Anchor, AlertTriangle } from 'lucide-react';
 
 export default function SignInPage() {
   return (
@@ -43,6 +43,19 @@ export default function SignInPage() {
               },
             }}
           />
+        </div>
+
+        {/* Google OAuth notice */}
+        <div className="mt-4 flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+          <AlertTriangle className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
+          <div className="text-xs text-amber-300/80">
+            <strong>Google sign-in:</strong> If clicking &quot;Continue with Google&quot; shows an error, use email/password instead. 
+            Google OAuth can be enabled in the{' '}
+            <a href="https://dashboard.clerk.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-amber-200">
+              Clerk Dashboard
+            </a>{' '}
+            → Configure → Social Connections.
+          </div>
         </div>
       </div>
     </div>

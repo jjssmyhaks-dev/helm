@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import { ClerkProvider } from '@clerk/nextjs';
+import { Toaster } from 'sonner';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -15,7 +17,24 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="en">
-        <body className="antialiased">{children}</body>
+        <body className="antialiased">
+          <ErrorBoundary>
+            {children}
+          </ErrorBoundary>
+          <Toaster
+            position="top-right"
+            richColors
+            closeButton
+            theme="dark"
+            toastOptions={{
+              style: {
+                background: '#1a1a2e',
+                border: '1px solid #2d2d44',
+                color: '#e2e8f0',
+              },
+            }}
+          />
+        </body>
       </html>
     </ClerkProvider>
   );

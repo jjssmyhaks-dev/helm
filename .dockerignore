@@ -1,0 +1,12 @@
+node_modules
+.git
+.freebuff
+*.log
+.env
+.env.local
+.next
+dist
+build
+*.md
+.vscode
+.idea

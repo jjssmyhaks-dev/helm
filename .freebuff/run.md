@@ -14,13 +14,13 @@ cd apps/web
 npx next dev -p 3456
 ```
 
-Or use the detached VBS launcher:
+Or use the detached PowerShell launcher:
 ```
-cscript //nologo .freebuff/start-frontend.vbs
+powershell -NoProfile -ExecutionPolicy Bypass -File .freebuff/start-frontend.ps1
 ```
 
-- **Port:** 3456 (Next.js may choose an alternate port if 3456 is taken; check the stdout log for the actual URL)
-- **API_URL:** http://localhost:4000 (backend must be running separately via `cscript .freebuff/start-api.vbs`)
+- **Port:** 3456
+- **API_URL:** http://localhost:4000 (backend must be running separately)
 - **Auth:** Clerk (redirects to /sign-in if unauthenticated)
 - **Frontend:** Next.js 15 + Tailwind CSS + Clerk auth
 
@@ -34,5 +34,6 @@ Find PID with: `netstat -ano | grep ":3456" | grep "LISTENING"`
 
 ## Notes
 
-- Register preview with `127.0.0.1:3456` (not `localhost`) to avoid IPv6 issues
-- Multiple lockfiles warning is harmless (pnpm + npm coexist)
+- Register preview with `localhost:3456` (not `127.0.0.1`)
+- Multiple lockfiles warning is harmless
+- Use `cmd //c "start /b node ..."` for reliable process detachment on Windows
