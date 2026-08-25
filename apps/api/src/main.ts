@@ -1,12 +1,31 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { Logger } from 'nestjs-pino';
+import * as Sentry from '@sentry/node';
+import { SentryFilter } from './common/sentry.filter.js';
 import { AppModule } from './app.module.js';
 
 async function bootstrap() {
+  // Initialize Sentry before anything else
+  if (process.env.SENTRY_DSN) {
+    Sentry.init({
+      dsn: process.env.SENTRY_DSN,
+      environment: process.env.NODE_ENV || 'development',
+      tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
+    });
+  }
+
   const app = await NestFactory.create(AppModule, {
-    logger: ['error', 'warn', 'log'],
+    logger: false, // Disable default logger; nestjs-pino handles it
   });
+
+  // Global Sentry exception filter
+  app.useGlobalFilters(new SentryFilter());
+
+  // Use Pino as the NestJS logger
+  const logger = app.get(Logger);
+  app.useLogger(logger);
 
   // CORS — allow all common dev ports + production
   app.enableCors({

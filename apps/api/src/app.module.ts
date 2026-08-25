@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { LoggerConfigModule } from './common/logger.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { FounderModule } from './founder/founder.module.js';
 import { ChatModule } from './chat/chat.module.js';
@@ -22,11 +23,14 @@ import { NotificationModule } from './notification/notification.module.js';
 import { DashboardModule } from './dashboard/dashboard.module.js';
 import { HealthController } from './health.controller.js';
 import { IntelligenceModule } from './intelligence/intelligence.module.js';
+import { BackupModule } from './backup/backup.module.js';
+import { AutonomyModule } from './autonomy/autonomy.module.js';
 
 @Module({
   controllers: [HealthController],
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    LoggerConfigModule,
     ScheduleModule.forRoot(),
     DatabaseModule,
     QueueModule,
@@ -48,6 +52,8 @@ import { IntelligenceModule } from './intelligence/intelligence.module.js';
     OrchestratorModule,
     ActivityModule,
     IntelligenceModule,
+    BackupModule,
+    AutonomyModule,
   ],
 })
 export class AppModule {}
