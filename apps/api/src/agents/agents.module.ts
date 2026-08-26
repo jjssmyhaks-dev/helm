@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, OnModuleInit } from '@nestjs/common';
 import { WritingAgent } from './writing.agent.js';
 import { FinanceAgent } from './finance.agent.js';
 import { PerformanceMarketingAgent } from './performance-marketing.agent.js';
@@ -28,4 +28,29 @@ const AGENTS = [
   providers: [...AGENTS, AgentOrchestratorService],
   exports: [...AGENTS, AgentOrchestratorService],
 })
-export class AgentsModule {}
+export class AgentsModule implements OnModuleInit {
+  constructor(
+    private orchestrator: AgentOrchestratorService,
+    private writing: WritingAgent,
+    private finance: FinanceAgent,
+    private perfMarketing: PerformanceMarketingAgent,
+    private metaAds: MetaAdsAgent,
+    private adCreator: AdCreatorAgent,
+    private googleAds: GoogleAdsAgent,
+    private seo: SeoAgent,
+    private projectMgmt: ProjectManagementAgent,
+  ) {}
+
+  onModuleInit() {
+    this.orchestrator.register(
+      this.writing,
+      this.finance,
+      this.perfMarketing,
+      this.metaAds,
+      this.adCreator,
+      this.googleAds,
+      this.seo,
+      this.projectMgmt,
+    );
+  }
+}

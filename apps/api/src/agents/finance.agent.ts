@@ -1,88 +1,55 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { LLMService } from '../llm/llm.service.js';
 import { PrismaService } from '../database/prisma.service.js';
-import { SpecialistAgent, AgentResult } from './agent-orchestrator.service.js';
+import { AgentBase, AgentConfig } from './agent-base.js';
+import { AgentResult } from './agent-orchestrator.service.js';
+
+const CONFIG: AgentConfig = {
+  name: 'Finance Agent',
+  layer: 'FINANCE',
+  intentKeywords: ['cash flow', 'runway', 'burn rate', 'revenue', 'expense', 'budget', 'cac', 'ltv', 'unit economics', 'margin', 'profit', 'loss', 'p&l', 'tax', 'gst', 'compliance', 'forecast', 'financial', 'mrr', 'arr', 'accounting', 'bookkeeping', 'invoice', 'payment'],
+  capabilities: [
+    { name: 'Cash Flow Analysis', description: 'Analyze cash flow, runway, burn rate', examples: ['How long is my runway?'] },
+    { name: 'Unit Economics', description: 'Calculate CAC, LTV, margins', examples: ['What is my CAC?'] },
+    { name: 'Budget Planning', description: 'Create budgets, forecast expenses', examples: ['Create a monthly budget'] },
+    { name: 'Revenue Forecasting', description: 'Project revenue, MRR/ARR', examples: ['Forecast revenue for 6 months'] },
+    { name: 'Tax & Compliance', description: 'Tax obligations, GST, filing', examples: ['What are my GST obligations?'] },
+    { name: 'Financial Reports', description: 'Generate P&L, balance sheets', examples: ['Generate a P&L statement'] },
+  ],
+  systemPrompt: `You are a senior financial analyst. Provide detailed, actionable financial analysis.
+Output valid JSON:
+{"analysis":"<markdown>","keyMetrics":{"<metric>":"<value>"},"alerts":["<risk>"],"recommendations":["<rec>"],"nextSteps":["<step>"]}`,
+  temperature: 0.3,
+};
 
 @Injectable()
-export class FinanceAgent implements SpecialistAgent {
-  name = 'Finance Agent';
-  layer = 'FINANCE';
-  private readonly logger = new Logger(FinanceAgent.name);
+export class FinanceAgent extends AgentBase {
+  readonly name = CONFIG.name;
+  readonly layer = CONFIG.layer;
+  readonly capabilities = CONFIG.capabilities;
 
-  capabilities = [
-    { name: 'Cash Flow Analysis', description: 'Analyze cash flow, runway, burn rate', examples: ['How long is my runway?', 'What\'s my burn rate?'] },
-    { name: 'Unit Economics', description: 'Calculate CAC, LTV, margins, payback period', examples: ['What\'s my CAC?', 'Calculate LTV:CAC ratio'] },
-    { name: 'Budget Planning', description: 'Create budgets, forecast expenses', examples: ['Create a monthly budget', 'Forecast next quarter expenses'] },
-    { name: 'Revenue Forecasting', description: 'Project revenue, growth rates, MRR/ARR', examples: ['Forecast revenue for next 6 months', 'What\'s my MRR growth?'] },
-    { name: 'Tax & Compliance', description: 'Tax obligations, GST, filing reminders', examples: ['What are my GST obligations?', 'When is my tax filing due?'] },
-    { name: 'Financial Reports', description: 'Generate P&L, balance sheets, financial summaries', examples: ['Generate a P&L statement', 'Create a financial summary for investors'] },
-  ];
-
-  constructor(private llm: LLMService, private prisma: PrismaService) {}
-
-  canHandle(intent: string, params: Record<string, string>): boolean {
-    const keywords = ['cash flow', 'runway', 'burn rate', 'revenue', 'expense', 'budget', 'cac', 'ltv', 'unit economics', 'margin', 'profit', 'loss', 'p&l', 'tax', 'gst', 'compliance', 'forecast', 'financial', 'mrr', 'arr', 'accounting', 'bookkeeping', 'invoice', 'payment'];
-    return keywords.some((k) => intent.toLowerCase().includes(k));
+  constructor(llm: LLMService, private prisma: PrismaService) {
+    super(llm, CONFIG);
   }
 
-  async execute(founderId: string, intent: string, params: Record<string, string>, message: string): Promise<AgentResult> {
-    const analysisType = this.detectAnalysisType(message);
-
-    // Get founder context for business info
+  protected override async buildSystemPrompt(founderId: string): Promise<string> {
     const founder = await this.prisma.founder.findUnique({ where: { id: founderId } });
-    const context = await this.prisma.founderContext.findUnique({ where: { founderId } });
-
-    const systemPrompt = `You are a senior financial analyst for ${founder?.businessName || 'a startup'}.
-Business type: ${founder?.businessType || 'SaaS'}
-Industry: ${founder?.industry || 'tech'}
-
-You specialize in: ${analysisType}
-
-Provide detailed, actionable financial analysis with specific numbers and recommendations.
-Output valid JSON:
-{
-  "analysis": "<detailed analysis in markdown>",
-  "keyMetrics": { "<metric>": "<value>" },
-  "alerts": ["<financial alert or risk>"],
-  "recommendations": ["<specific recommendation>"],
-  "nextSteps": ["<actionable next step>"]
-}`;
-
-    const response = await this.llm.complete([
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: `Founder context: ${JSON.stringify(context?.goals || [])}\n\n${message}` },
-    ], { maxTokens: 2048, temperature: 0.3 });
-
-    try {
-      const parsed = JSON.parse(response.content);
-      let md = `## 💰 ${analysisType}\n\n${parsed.analysis}\n\n`;
-      if (parsed.keyMetrics && Object.keys(parsed.keyMetrics).length > 0) {
-        md += `### Key Metrics\n`;
-        for (const [k, v] of Object.entries(parsed.keyMetrics)) {
-          md += `- **${k}**: ${v}\n`;
-        }
-        md += '\n';
-      }
-      if (parsed.alerts?.length > 0) {
-        md += `### ⚠️ Alerts\n${parsed.alerts.map((a: string) => `- ${a}`).join('\n')}\n\n`;
-      }
-      if (parsed.recommendations?.length > 0) {
-        md += `### Recommendations\n${parsed.recommendations.map((r: string) => `- ${r}`).join('\n')}\n`;
-      }
-      return { agentName: this.name, response: md, suggestions: parsed.nextSteps || [], confidence: 0.85 };
-    } catch {
-      return { agentName: this.name, response: response.content, confidence: 0.7 };
-    }
+    const ctx = await this.prisma.founderContext.findUnique({ where: { founderId } });
+    const biz = founder?.businessName || 'a startup';
+    const type = founder?.businessType || 'SaaS';
+    const industry = founder?.industry || 'tech';
+    return `You are a senior financial analyst for ${biz} (${type}, ${industry}).\nFounder goals: ${JSON.stringify(ctx?.goals || [])}\n\n${CONFIG.systemPrompt}`;
   }
 
-  private detectAnalysisType(message: string): string {
-    const msg = message.toLowerCase();
-    if (msg.includes('runway') || msg.includes('burn rate')) return 'Runway & Burn Rate Analysis';
-    if (msg.includes('cac') || msg.includes('ltv') || msg.includes('unit economics')) return 'Unit Economics Analysis';
-    if (msg.includes('budget') || msg.includes('forecast')) return 'Budget & Forecasting';
-    if (msg.includes('tax') || msg.includes('gst') || msg.includes('compliance')) return 'Tax & Compliance Review';
-    if (msg.includes('p&l') || msg.includes('profit') || msg.includes('loss')) return 'Profit & Loss Analysis';
-    if (msg.includes('revenue') || msg.includes('mrr') || msg.includes('arr')) return 'Revenue Analysis';
-    return 'Financial Health Review';
+  protected override formatResponse(parsed: Record<string, any>): string {
+    let md = `## 💰 Financial Analysis\n\n${parsed.analysis || ''}\n\n`;
+    if (parsed.keyMetrics && Object.keys(parsed.keyMetrics).length > 0) {
+      md += `### Key Metrics\n`;
+      for (const [k, v] of Object.entries(parsed.keyMetrics)) md += `- **${k}**: ${v}\n`;
+      md += '\n';
+    }
+    if (parsed.alerts?.length > 0) md += `### ⚠️ Alerts\n${parsed.alerts.map((a: string) => `- ${a}`).join('\n')}\n\n`;
+    if (parsed.recommendations?.length > 0) md += `### Recommendations\n${parsed.recommendations.map((r: string) => `- ${r}`).join('\n')}\n`;
+    return md;
   }
 }
