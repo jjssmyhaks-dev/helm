@@ -119,21 +119,26 @@ Only include tools with relevance > 0.3. Return max 5 suggestions.`,
    * Search available tools by keyword.
    */
   async searchTools(query: string) {
-    const tools = await this.composio.getToolsForFounder('system');
-    const q = query.toLowerCase();
+    try {
+      const tools = await this.composio.getToolsForFounder('system');
+      const q = query.toLowerCase();
 
-    return tools
-      .filter((tool: any) => {
-        const name = (tool.name || '').toLowerCase();
-        const desc = (tool.description || '').toLowerCase();
-        return name.includes(q) || desc.includes(q);
-      })
-      .map((tool: any) => ({
-        name: tool.name,
-        displayName: this.formatName(tool.name),
-        description: tool.description || '',
-        appName: tool.appName || tool.name?.split('_')[0],
-      }));
+      return tools
+        .filter((tool: any) => {
+          const name = (tool.name || '').toLowerCase();
+          const desc = (tool.description || '').toLowerCase();
+          return name.includes(q) || desc.includes(q);
+        })
+        .map((tool: any) => ({
+          name: tool.name,
+          displayName: this.formatName(tool.name),
+          description: tool.description || '',
+          appName: tool.appName || tool.name?.split('_')[0],
+        }));
+    } catch (err: any) {
+      this.logger.error(`Failed to search tools: ${err.message}`);
+      return [];
+    }
   }
 
   /**
