@@ -72,6 +72,9 @@ class ApiClient {
     onChunk: (chunk: string) => void,
     onSession: (sessionId: string) => void,
     onDone: () => void,
+    onThinking?: (message: string) => void,
+    onToolUse?: (tool: { toolName: string; status: string; input?: Record<string, unknown> }) => void,
+    onToolResult?: (tool: { toolName: string; status: string; output?: unknown }) => void,
   ): Promise<void> {
     const response = await fetch(`${API_BASE}/chat/stream`, {
       method: 'POST',
@@ -109,7 +112,7 @@ class ApiClient {
             } else if (data.type === 'done') {
               onDone();
               return;
-            } else if (data.type === 'error') {
+            } else if (data.type === 'thinking') { if (onThinking) onThinking(data.message); } else if (data.type === 'tool_use') { if (onToolUse) onToolUse({ toolName: data.tool, status: 'running', input: data.input }); } else if (data.type === 'tool_result') { if (onToolResult) onToolResult({ toolName: data.tool, status: 'complete', output: data.output }); } else if (data.type === 'intent') { } else if (data.type === 'error') {
               throw new Error(data.error);
             }
           } catch (e) {

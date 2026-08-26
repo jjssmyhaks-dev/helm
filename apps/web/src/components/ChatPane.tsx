@@ -23,6 +23,9 @@ import {
 import { NotificationBell } from './NotificationBell';
 import { UserButton } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
+import { CapabilityBar } from './ai/CapabilityBar';
+import { ToolInvocationCard } from './ai/ToolInvocationCard';
+import { ToolSearchModal } from './connectors/ToolSearchModal';
 
 interface ChatMessage {
   id: string;
@@ -61,6 +64,10 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
   const [sending, setSending] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
+  const [activeCapabilities, setActiveCapabilities] = useState<Set<string>>(new Set());
+  const [toolInvocations, setToolInvocations] = useState<Array<{ toolName: string; status: 'running' | 'complete' | 'error'; input?: Record<string, unknown>; output?: string | Record<string, unknown> | null }>>([]);
+  const [showToolSearch, setShowToolSearch] = useState(false);
+  const [thinkingMessage, setThinkingMessage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -306,6 +313,23 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
                     </div>
                     <span className="text-xs">Thinking...</span>
                   </div>
+            {toolInvocations.length > 0 && (
+              <div className="space-y-2 ml-10">
+                {toolInvocations.map((inv, i) => (
+                  <ToolInvocationCard key={i} invocation={inv} />
+                ))}
+              </div>
+            )}
+            {thinkingMessage && (
+              <div className="ml-10 px-4 py-2 text-xs text-surface-600 flex items-center gap-2">
+                <div className="flex gap-1">
+                  <span className="w-1 h-1 rounded-full bg-helm-400 animate-bounce" />
+                  <span className="w-1 h-1 rounded-full bg-helm-400 animate-bounce" style={{ animationDelay: "150ms" }} />
+                  <span className="w-1 h-1 rounded-full bg-helm-400 animate-bounce" style={{ animationDelay: "300ms" }} />
+                </div>
+                {thinkingMessage}
+              </div>
+            )}
                 </div>
               </div>
             )}
@@ -316,7 +340,11 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
 
       {/* Input */}
       <div className="px-5 py-4 border-t border-surface-300/50 bg-surface-0/80 backdrop-blur-xl">
-        <div className="flex items-end gap-3 max-w-3xl mx-auto">
+        <div className="max-w-3xl mx-auto">
+          <div className="flex items-center gap-1 mb-2 px-1">
+            <CapabilityBar activeCapabilities={activeCapabilities} onToggle={(cap) => setActiveCapabilities((prev) => { const next = new Set(prev); if (next.has(cap)) next.delete(cap); else next.add(cap); return next; })} onOpenTools={() => setShowToolSearch(true)} isRecording={isRecording} />
+          </div>
+          <div className="flex items-end gap-3">
           <div className="flex-1 relative">
             <textarea
               ref={inputRef}
@@ -351,6 +379,7 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
             </button>
           </div>
         </div>
+          </div>
         <p className="text-center text-[10px] text-surface-600 mt-2">
           Helm can make mistakes. Verify important decisions.
         </p>

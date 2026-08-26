@@ -27,6 +27,7 @@ import { BackupModule } from './backup/backup.module.js';
 import { AutonomyModule } from './autonomy/autonomy.module.js';
 import { LeadModule } from './lead/lead.module.js';
 import { EmailModule } from './email/email.module.js';
+import { AgentsModule } from './agents/agents.module.js';
 
 @Module({
   controllers: [HealthController],
@@ -58,6 +59,7 @@ import { EmailModule } from './email/email.module.js';
     AutonomyModule,
     LeadModule,
     EmailModule,
+    AgentsModule,
   ],
 })
 export class AppModule {}

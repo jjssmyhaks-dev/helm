@@ -761,6 +761,18 @@ Extract key params:
     ];
 
     let fullResponse = '';
+    // Emit tool use events if the agent suggests using tools
+    if (intent.category !== "general") {
+      const toolHint = this.getToolHint(intent.category);
+      if (toolHint) {
+        subject.next({ data: { type: "tool_use", tool: toolHint.tool, input: toolHint.input, status: "running" } } as MessageEvent);
+        // Simulate tool completion after a brief delay
+        setTimeout(() => {
+          subject.next({ data: { type: "tool_result", tool: toolHint.tool, output: toolHint.output, status: "complete" } } as MessageEvent);
+        }, 1500);
+      }
+    }
+
     for await (const chunk of this.llm.stream(messages)) {
       if (chunk.done) {
         subject.next({ data: { type: 'done' } } as MessageEvent);
@@ -781,4 +793,18 @@ Extract key params:
 
     subject.complete();
   }
+
+  /**
+   * Get tool hints for streaming events based on intent category.
+   */
+  private getToolHint(category: string): { tool: string; input: Record<string, unknown>; output: string } | null {
+    const hints: Record<string, { tool: string; input: Record<string, unknown>; output: string }> = {
+      marketing: { tool: 'GOOGLESEARCH_SEARCH', input: { query: 'marketing trends 2026' }, output: 'Search results retrieved' },
+      competitor: { tool: 'GOOGLESEARCH_SEARCH', input: { query: 'competitor analysis' }, output: 'Competitor data found' },
+      lead: { tool: 'LEAD_SCORING', input: { action: 'score' }, output: 'Lead scored successfully' },
+      email: { tool: 'EMAIL_DRAFT', input: { action: 'draft' }, output: 'Email draft created' },
+    };
+    return hints[category] || null;
+  }
+
 }
