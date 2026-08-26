@@ -17,6 +17,8 @@ import {
   Settings,
   Sparkles,
   ArrowUp,
+  Users,
+  Mail,
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { UserButton } from '@clerk/nextjs';
@@ -179,6 +181,12 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
           </button>
           <button onClick={() => router.push('/dashboard')} className="p-2 rounded-lg hover:bg-surface-200 text-surface-600 hover:text-white transition-all duration-150" title="Dashboard">
             <BarChart3 className="w-4 h-4" />
+          </button>
+          <button onClick={() => router.push('/leads')} className="p-2 rounded-lg hover:bg-surface-200 text-surface-600 hover:text-white transition-all duration-150" title="Leads">
+            <Users className="w-4 h-4" />
+          </button>
+          <button onClick={() => router.push('/emails')} className="p-2 rounded-lg hover:bg-surface-200 text-surface-600 hover:text-white transition-all duration-150" title="Emails">
+            <Mail className="w-4 h-4" />
           </button>
           <button onClick={() => router.push('/settings')} className="p-2 rounded-lg hover:bg-surface-200 text-surface-600 hover:text-white transition-all duration-150" title="Settings">
             <Settings className="w-4 h-4" />

@@ -25,6 +25,8 @@ import { HealthController } from './health.controller.js';
 import { IntelligenceModule } from './intelligence/intelligence.module.js';
 import { BackupModule } from './backup/backup.module.js';
 import { AutonomyModule } from './autonomy/autonomy.module.js';
+import { LeadModule } from './lead/lead.module.js';
+import { EmailModule } from './email/email.module.js';
 
 @Module({
   controllers: [HealthController],
@@ -54,6 +56,8 @@ import { AutonomyModule } from './autonomy/autonomy.module.js';
     IntelligenceModule,
     BackupModule,
     AutonomyModule,
+    LeadModule,
+    EmailModule,
   ],
 })
 export class AppModule {}

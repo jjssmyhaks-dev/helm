@@ -81,7 +81,7 @@ export default function Home() {
   }
 
   return (
-    <div className="flex h-screen bg-dark-950 overflow-hidden">
+    <div className="flex h-screen bg-surface-0 overflow-hidden">
       {/* Command Palette */}
       <CommandPalette open={cmdPaletteOpen} onClose={() => setCmdPaletteOpen(false)} />
 
@@ -106,7 +106,7 @@ export default function Home() {
         )}
         <div
           className={`
-            fixed inset-y-0 right-0 z-50 w-[340px] bg-dark-900 border-l border-dark-700
+            fixed inset-y-0 right-0 z-50 w-[340px] bg-surface-100 border-l border-surface-300/50
             transform transition-transform duration-300 ease-in-out
             ${sidePanelOpen ? 'translate-x-0' : 'translate-x-full'}
             md:relative md:translate-x-0 md:z-auto md:w-[380px]

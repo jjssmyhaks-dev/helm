@@ -6,13 +6,15 @@ import { MarketingCampaignEngine } from '../intelligence/marketing-campaign.engi
 import { CashflowAnalysisEngine } from '../intelligence/cashflow-analysis.engine.js';
 import { CompetitorIntelligenceEngine } from '../intelligence/competitor-intelligence.engine.js';
 import { SupportTriageEngine } from '../intelligence/support-triage.engine.js';
+import { LeadService } from '../lead/lead.service.js';
+import { EmailService } from '../email/email.service.js';
 import { Observable, Subject } from 'rxjs';
 import { MessageEvent } from '@nestjs/common';
 
 /**
  * Intent categories that map to intelligence engines.
  */
-type IntentCategory = 'marketing' | 'cashflow' | 'competitor' | 'support' | 'general';
+type IntentCategory = 'marketing' | 'cashflow' | 'competitor' | 'support' | 'lead' | 'email' | 'general';
 
 interface ClassifiedIntent {
   category: IntentCategory;
@@ -30,6 +32,8 @@ export class ChatService {
     private cashflow: CashflowAnalysisEngine,
     private competitor: CompetitorIntelligenceEngine,
     private support: SupportTriageEngine,
+    private leadService: LeadService,
+    private emailService: EmailService,
   ) {}
 
   /**
@@ -90,7 +94,7 @@ export class ChatService {
         role: 'system',
         content: `Classify this founder message into ONE category. Output valid JSON:
 {
-  "category": "marketing|cashflow|competitor|support|general",
+  "category": "marketing|cashflow|competitor|support|lead|email|general",
   "confidence": 0.0-1.0,
   "params": { key extracted params }
 }
@@ -100,13 +104,17 @@ Category rules:
 - "cashflow": cash flow analysis, runway, burn rate, revenue, expenses, unit economics, financial health
 - "competitor": competitor analysis, market research, pricing benchmarks, competitive landscape, industry trends
 - "support": customer support, ticket triage, FAQ, customer issues, sentiment
+- "lead": lead management, lead scoring, pipeline, prospects, CRM, qualification, outreach
+- "email": email drafting, sending emails, follow-ups, templates, outreach emails, vendor emails, VC updates
 - "general": anything else — greetings, general questions, status checks
 
 Extract key params:
 - marketing: product, audience, budget, goals
 - cashflow: transactions, balance, business type
 - competitor: competitor name, industry, product
-- support: message content, channel`,
+- support: message content, channel
+- lead: lead name, company, source, status
+- email: recipient, category (lead/vendor/partner/vc/customer), subject, key points`,
       },
       {
         role: 'user',
@@ -116,7 +124,7 @@ Extract key params:
 
     try {
       const parsed = JSON.parse(response.content);
-      if (['marketing', 'cashflow', 'competitor', 'support', 'general'].includes(parsed.category)) {
+      if (['marketing', 'cashflow', 'competitor', 'support', 'lead', 'email', 'general'].includes(parsed.category)) {
         return parsed as ClassifiedIntent;
       }
     } catch {
@@ -143,6 +151,10 @@ Extract key params:
         return this.handleCompetitorIntent(founderId, intent.params, originalMessage);
       case 'support':
         return this.handleSupportIntent(founderId, intent.params, originalMessage);
+      case 'lead':
+        return this.handleLeadIntent(founderId, intent.params, originalMessage);
+      case 'email':
+        return this.handleEmailIntent(founderId, intent.params, originalMessage);
       default:
         return this.handleGeneralIntent(founderId, originalMessage);
     }
@@ -313,6 +325,166 @@ Extract key params:
     return { response, engineUsed: 'support-triage-engine' };
   }
 
+  // ─── Lead Intent Handlers ──────────────────────────────────
+
+  private async handleLeadIntent(
+    founderId: string,
+    params: Record<string, string>,
+    message: string,
+  ): Promise<{ response: string; engineUsed: string }> {
+    const msg = message.toLowerCase();
+
+    // Pipeline stats
+    if (msg.includes('pipeline') || msg.includes('stats') || msg.includes('summary') || msg.includes('how many leads')) {
+      const stats = await this.leadService.getPipelineStats(founderId);
+      const response = this.formatPipelineStats(stats);
+      return { response, engineUsed: 'lead-service' };
+    }
+
+    // Score a specific lead
+    if (msg.includes('score') || msg.includes('rate') || msg.includes('qualify')) {
+      const leadName = params.name || params.company || message.replace(/score|rate|qualify|lead/gi, '').trim();
+      if (leadName.length > 2) {
+        const leads = await this.leadService.findAll(founderId, { search: leadName });
+        if (leads.length > 0) {
+          const scored = await this.leadService.scoreLead(founderId, leads[0].id);
+          const response = `## 🎯 Lead Score: ${leads[0].name}\n\n` +
+            `**Overall Score:** ${scored.overallScore}/100\n` +
+            `- Fit: ${scored.fitScore}/100\n` +
+            `- Engagement: ${scored.engagementScore}/100\n` +
+            `- Intent: ${scored.intentScore}/100\n\n`;
+          return { response, engineUsed: 'lead-service' };
+        }
+      }
+    }
+
+    // Suggest next action
+    if (msg.includes('next step') || msg.includes('what should i do') || msg.includes('suggest') || msg.includes('next action')) {
+      const leadName = params.name || params.company || '';
+      const leads = await this.leadService.findAll(founderId, leadName ? { search: leadName } : {});
+      if (leads.length > 0) {
+        const suggestions = await this.leadService.suggestNextAction(founderId, leads[0].id);
+        let response = `## 🚀 Next Actions for ${suggestions.lead.name}\n\n`;
+        for (const s of suggestions.suggestions) {
+          const icon = s.priority === 'high' ? '🔴' : s.priority === 'medium' ? '🟡' : '🟢';
+          response += `${icon} **${s.action}**\n> ${s.reason}\n\n`;
+        }
+        return { response, engineUsed: 'lead-service' };
+      }
+    }
+
+    // List leads
+    if (msg.includes('list') || msg.includes('show') || msg.includes('all leads') || msg.includes('my leads')) {
+      const leads = await this.leadService.findAll(founderId, {
+        status: params.status as any,
+        search: params.name || params.company,
+      });
+      let response = `## 📋 Your Leads (${leads.length})\n\n`;
+      for (const lead of leads.slice(0, 10)) {
+        response += `- **${lead.name}** — ${lead.company || 'N/A'} | Score: ${lead.score || 'N/A'} | Status: ${lead.status}\n`;
+      }
+      if (leads.length > 10) response += `\n... and ${leads.length - 10} more.`;
+      return { response, engineUsed: 'lead-service' };
+    }
+
+    // Default: general lead info
+    const response = `## 🎯 Lead Management\n\nI can help you with:\n\n` +
+      `- **\"List my leads\"** — See all your leads with scores and status\n` +
+      `- **\"Score [lead name]\"** — AI-score a specific lead\n` +
+      `- **\"Pipeline stats\"** — See conversion rates and pipeline health\n` +
+      `- **\"Next steps for [lead]\"** — Get AI-suggested next actions\n` +
+      `- **\"Add lead [name]\"** — Create a new lead\n\n` +
+      `Try: *\"Show me my pipeline stats\"* or *\"Score John from Acme\"*`;
+    return { response, engineUsed: 'lead-service' };
+  }
+
+  private formatPipelineStats(stats: any): string {
+    let md = `## 📊 Lead Pipeline\n\n`;
+    md += `**Total Leads:** ${stats.total} | **Avg Score:** ${Math.round(stats.avgScore)} | **Conversion:** ${stats.conversionRate}%\n\n`;
+    md += `| Stage | Count | Avg Score | % of Pipeline |\n|---|---|---|---|\n`;
+    for (const stage of stats.pipeline) {
+      md += `| ${stage.status} | ${stage.count} | ${Math.round(stage.avgScore)} | ${stage.percentage}% |\n`;
+    }
+    return md;
+  }
+
+  // ─── Email Intent Handlers ─────────────────────────────────
+
+  private async handleEmailIntent(
+    founderId: string,
+    params: Record<string, string>,
+    message: string,
+  ): Promise<{ response: string; engineUsed: string }> {
+    const msg = message.toLowerCase();
+
+    // Draft an email
+    if (msg.includes('draft') || msg.includes('write') || msg.includes('compose') || msg.includes('send')) {
+      const category = this.detectEmailCategory(msg);
+      const draft = await this.emailService.draftEmail(founderId, category, {
+        to: params.recipient || params.to,
+        subject: params.subject,
+        keyPoints: params.points ? params.points.split(',') : [message],
+        tonality: params.tonality,
+        additionalContext: message,
+      });
+
+      let response = `## ✉️ Email Draft (${category})\n\n`;
+      response += `**To:** ${draft.draft.to || 'Not specified'}\n`;
+      response += `**Subject:** ${draft.draft.subject}\n`;
+      response += `**Tonality:** ${draft.draft.tonality}\n\n`;
+      response += `### Body\n${draft.draft.body}\n\n`;
+      if (draft.suggestions.length > 0) {
+        response += `### 💡 Suggestions\n${draft.suggestions.map((s: string) => `- ${s}`).join('\n')}\n\n`;
+      }
+      response += `Draft ID: \`${draft.draft.id}\` — Say *\"approve\"* to approve, or *\"edit\"* to modify.`;
+
+      return { response, engineUsed: 'email-service' };
+    }
+
+    // Email stats
+    if (msg.includes('stats') || msg.includes('how many emails') || msg.includes('email summary')) {
+      const stats = await this.emailService.getStats(founderId);
+      let response = `## 📧 Email Stats\n\n`;
+      response += `**Total Sent:** ${stats.totalSent} | **Total Drafts:** ${stats.totalDrafts}\n\n`;
+      if (stats.sentByCategory.length > 0) {
+        response += `### Sent by Category\n`;
+        for (const s of stats.sentByCategory) {
+          response += `- **${s.category}**: ${s.count}\n`;
+        }
+      }
+      return { response, engineUsed: 'email-service' };
+    }
+
+    // Templates
+    if (msg.includes('template')) {
+      const templates = await this.emailService.getTemplates(founderId);
+      let response = `## 📝 Email Templates (${templates.length})\n\n`;
+      for (const t of templates.slice(0, 10)) {
+        response += `- **${t.name}** (${t.category}) — Used ${t.usageCount} times\n`;
+      }
+      return { response, engineUsed: 'email-service' };
+    }
+
+    // Default: email help
+    let response = `## ✉️ Email Agent\n\nI can help you with:\n\n` +
+      `- **\"Draft an email to [recipient]\"** — AI-drafts with category-appropriate tonality\n` +
+      `- **\"Send follow-up to [name]\"** — Draft a follow-up email\n` +
+      `- **\"Email stats\"** — See your sending history\n` +
+      `- **\"Show templates\"** — Browse email templates\n\n`;
+    response += `**Categories:** Lead (professional), Vendor (assertive), Partner (friendly), VC (concise), Customer (empathetic)\n\n`;
+    response += `Try: *\"Draft a follow-up email to John at Acme\"*`;
+    return { response, engineUsed: 'email-service' };
+  }
+
+  private detectEmailCategory(msg: string): 'LEAD' | 'VENDOR' | 'PARTNER' | 'VC' | 'CUSTOMER' | 'GENERAL' {
+    if (msg.includes('vendor') || msg.includes('supplier')) return 'VENDOR';
+    if (msg.includes('partner') || msg.includes('collaboration')) return 'PARTNER';
+    if (msg.includes('investor') || msg.includes('vc') || msg.includes('fund') || msg.includes('raise')) return 'VC';
+    if (msg.includes('customer') || msg.includes('client') || msg.includes('support')) return 'CUSTOMER';
+    if (msg.includes('lead') || msg.includes('prospect') || msg.includes('outreach')) return 'LEAD';
+    return 'GENERAL';
+  }
+
   // ─── General Intent Handler ────────────────────────────────
 
   private async handleGeneralIntent(
@@ -324,7 +496,7 @@ Extract key params:
     const response = await this.llm.complete([
       {
         role: 'system',
-        content: `You are Helm, an AI operating system for solo founders. You have specialist agents across Research, Marketing, Operations, and Finance. Respond concisely and helpfully. If the founder's message would benefit from a specific analysis (marketing campaign, cashflow, competitor research, support triage), suggest they ask for it specifically.`,
+        content: `You are Helm, an AI operating system for solo founders. You have specialist agents across Research, Marketing, Operations, Finance, Lead Management, and Email. Respond concisely and helpfully. If the founder's message would benefit from a specific analysis (marketing campaign, cashflow, competitor research, support triage, lead scoring, email drafting), suggest they ask for it specifically.`,
       },
       {
         role: 'user',
@@ -575,6 +747,8 @@ Extract key params:
         cashflow: 'The founder is asking about finances. Provide cashflow/financial analysis guidance.',
         competitor: 'The founder is asking about competitors. Provide competitive intelligence guidance.',
         support: 'The founder is asking about customer support. Provide support triage guidance.',
+        lead: 'The founder is asking about lead management. Help with scoring, pipeline, and next actions.',
+        email: 'The founder is asking about emails. Help draft, send, and manage emails with appropriate tonality.',
       }[intent.category];
       systemPrompt += ` ${engineHint}`;
     }

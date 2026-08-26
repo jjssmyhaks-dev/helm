@@ -3,7 +3,6 @@ import { ClerkProvider } from '@clerk/nextjs';
 import { Toaster } from 'sonner';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import './globals.css';
-import './sentry.client.config';
 
 export const metadata: Metadata = {
   title: 'Helm — AI Operating System for Solo Founders',

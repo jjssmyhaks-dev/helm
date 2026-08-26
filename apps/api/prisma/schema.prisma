@@ -52,6 +52,32 @@ enum ApprovalStatus {
   EXPIRED
 }
 
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  MEETING
+  PROPOSAL
+  CLOSED_WON
+  CLOSED_LOST
+}
+
+enum EmailCategory {
+  LEAD
+  VENDOR
+  PARTNER
+  VC
+  CUSTOMER
+  GENERAL
+}
+
+enum EmailDraftStatus {
+  DRAFT
+  APPROVED
+  SENT
+  FAILED
+}
+
 model Founder {
   id                String   @id
   clerkUserId       String   @unique @map("clerk_user_id")
@@ -75,6 +101,10 @@ model Founder {
   notifications     Notification[]
   chatSessions      ChatSession[]
   context           FounderContext?
+  leads             Lead[]
+  emailTemplates    EmailTemplate[]
+  emailDrafts       EmailDraft[]
+  emailSent         EmailSent[]
 
   @@map("founders")
 }
@@ -272,4 +302,118 @@ model ChatMessage {
 
   @@index([sessionId])
   @@map("chat_messages")
+}
+
+model Lead {
+  id              String     @id @default(uuid())
+  founderId       String     @map("founder_id")
+  founder         Founder    @relation(fields: [founderId], references: [id], onDelete: Cascade)
+  name            String
+  email           String?
+  phone           String?
+  company         String?
+  title           String?
+  source          String?
+  status          LeadStatus @default(NEW)
+  score           Float?
+  scoreDetails    Json?      @map("score_details")
+  tags            String[]
+  notes           String?
+  linkedinUrl     String?    @map("linkedin_url")
+  website         String?
+  lastContactedAt DateTime?  @map("last_contacted_at")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  activities      LeadActivity[]
+  scoreHistory    LeadScore[]
+  emailDrafts     EmailDraft[]
+
+  @@index([founderId, status])
+  @@index([founderId, score])
+  @@map("leads")
+}
+
+model LeadActivity {
+  id          String   @id @default(uuid())
+  leadId      String   @map("lead_id")
+  lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  type        String
+  description String
+  metadata    Json     @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([leadId])
+  @@map("lead_activities")
+}
+
+model LeadScore {
+  id              String   @id @default(uuid())
+  leadId          String   @map("lead_id")
+  lead            Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  fitScore        Float    @map("fit_score")
+  engagementScore Float    @map("engagement_score")
+  intentScore     Float    @map("intent_score")
+  overallScore    Float    @map("overall_score")
+  factors         Json     @default("{}")
+  scoredAt        DateTime @default(now()) @map("scored_at")
+
+  @@index([leadId])
+  @@map("lead_scores")
+}
+
+model EmailTemplate {
+  id          String        @id @default(uuid())
+  founderId   String        @map("founder_id")
+  founder     Founder       @relation(fields: [founderId], references: [id], onDelete: Cascade)
+  name        String
+  category    EmailCategory
+  subject     String
+  body        String
+  tonality    String        @default("professional")
+  tags        String[]
+  usageCount  Int           @default(0) @map("usage_count")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  @@index([founderId, category])
+  @@map("email_templates")
+}
+
+model EmailDraft {
+  id          String          @id @default(uuid())
+  founderId   String          @map("founder_id")
+  founder     Founder         @relation(fields: [founderId], references: [id], onDelete: Cascade)
+  leadId      String?         @map("lead_id")
+  lead        Lead?           @relation(fields: [leadId], references: [id])
+  category    EmailCategory
+  to          String
+  subject     String
+  body        String
+  tonality    String          @default("professional")
+  status      EmailDraftStatus @default(DRAFT)
+  sentAt      DateTime?       @map("sent_at")
+  createdAt   DateTime        @default(now()) @map("created_at")
+
+  sentRecord  EmailSent?
+
+  @@index([founderId, status])
+  @@map("email_drafts")
+}
+
+model EmailSent {
+  id          String        @id @default(uuid())
+  draftId     String        @unique @map("draft_id")
+  draft       EmailDraft    @relation(fields: [draftId], references: [id])
+  founderId   String        @map("founder_id")
+  founder     Founder       @relation(fields: [founderId], references: [id], onDelete: Cascade)
+  to          String
+  from        String        @map("from_email")
+  subject     String
+  body        String
+  category    EmailCategory
+  sentAt      DateTime      @default(now()) @map("sent_at")
+
+  @@index([founderId])
+  @@map("email_sent")
 }

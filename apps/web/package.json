@@ -10,8 +10,11 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.42",
+    "@ai-sdk/react": "^4.0.82",
     "@clerk/nextjs": "^7.8.0",
     "@sentry/nextjs": "^10.71.0",
+    "ai": "^7.0.79",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "lucide-react": "^0.468.0",
