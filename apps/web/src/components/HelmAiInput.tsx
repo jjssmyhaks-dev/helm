@@ -46,6 +46,7 @@ interface HelmAiInputProps {
   disabled?: boolean;
   isRecording?: boolean;
   onToggleRecording?: () => void;
+  onAttach?: () => void;
 }
 
 export default function HelmAiInput({
@@ -55,6 +56,7 @@ export default function HelmAiInput({
   disabled = false,
   isRecording = false,
   onToggleRecording,
+  onAttach,
 }: HelmAiInputProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -139,6 +141,7 @@ export default function HelmAiInput({
             <Button
               aria-label="Attach file"
               className="text-surface-400 transition-colors duration-100 ease-out hover:text-surface-700"
+              onClick={onAttach}
               size="icon"
               title="Attach file"
               variant="ghost"

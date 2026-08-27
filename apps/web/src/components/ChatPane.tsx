@@ -26,6 +26,7 @@ import { ToolSearchModal } from './connectors/ToolSearchModal';
 import HelmAiInput from './HelmAiInput';
 import { HelmCommandMenu } from './HelmCommandMenu';
 import { Kbd } from './ui/kbd';
+import HelmFileUpload from './HelmFileUpload';
 
 /* ─── Safe Clerk fallback ─── */
 function UserAvatar() {
@@ -87,6 +88,7 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
   const [showSessions, setShowSessions] = useState(false);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [showCommandMenu, setShowCommandMenu] = useState(false);
+  const [showFileUpload, setShowFileUpload] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -313,6 +315,7 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
           disabled={sending}
           isRecording={isRecording}
           onToggleRecording={toggleRecording}
+          onAttach={() => setShowFileUpload(true)}
         />
         <p className="text-center text-[11px] text-surface-400 mt-2">Helm can make mistakes. Verify important decisions.</p>
       </div>
@@ -324,6 +327,11 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
         onAction={(action) => {
           if (action === 'logout') onLogout();
         }}
+      />
+
+      <HelmFileUpload
+        open={showFileUpload}
+        onClose={() => setShowFileUpload(false)}
       />
     </div>
   );
