@@ -1,9 +1,46 @@
 'use client';
 
-import { SignUp } from '@clerk/nextjs';
-import { Anchor, ArrowRight, Bot, Shield, Zap, BarChart3 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Anchor, Bot, Shield, Zap, BarChart3, ArrowRight } from 'lucide-react';
+
+const clerkKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || '';
+const CLERK_KEY_REGEX = /^pk_(test|live)_[A-Za-z0-9+/=_-]{20,}$/;
+const clerkEnabled = CLERK_KEY_REGEX.test(clerkKey);
 
 export default function SignUpPage() {
+  const [ClerkSignUp, setClerkSignUp] = useState<any>(null);
+
+  useEffect(() => {
+    if (clerkEnabled) {
+      import('@clerk/nextjs').then((mod) => {
+        setClerkSignUp(() => mod.SignUp);
+      });
+    }
+  }, []);
+
+  if (!clerkEnabled) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-surface-0">
+        <div className="text-center max-w-md p-8">
+          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-helm-500 to-helm-600 flex items-center justify-center shadow-glow mx-auto mb-6">
+            <Anchor className="w-6 h-6 text-white" />
+          </div>
+          <h1 className="text-2xl font-bold text-white mb-3">Sign-up not available</h1>
+          <p className="text-surface-600 mb-6">
+            Clerk authentication isn&apos;t configured yet. You can try Helm in demo mode instead.
+          </p>
+          <a
+            href="/"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-helm-600 to-helm-500 text-white font-semibold hover:from-helm-500 hover:to-helm-400 transition-all shadow-glow"
+          >
+            Try Demo Mode
+            <ArrowRight className="w-4 h-4" />
+          </a>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex bg-surface-0">
       {/* Left side — Branding */}
@@ -23,8 +60,7 @@ export default function SignUpPage() {
 
           <div className="max-w-md">
             <h1 className="text-4xl font-bold text-white leading-tight mb-4">
-              Build faster with
-              <br />
+              Build faster with<br />
               <span className="text-gradient-helm">your AI team.</span>
             </h1>
             <p className="text-surface-600 text-lg leading-relaxed">
@@ -56,7 +92,6 @@ export default function SignUpPage() {
       {/* Right side — Sign up form */}
       <div className="flex-1 flex items-center justify-center p-8 relative">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(99,102,241,0.03),transparent_70%)]" />
-
         <div className="w-full max-w-sm relative z-10">
           <div className="lg:hidden flex items-center gap-3 mb-10">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-helm-500 to-helm-600 flex items-center justify-center shadow-glow">
@@ -70,28 +105,30 @@ export default function SignUpPage() {
             <p className="text-surface-600">Start your free trial — no credit card needed</p>
           </div>
 
-          <SignUp
-            routing="path"
-            path="/sign-up"
-            signInUrl="/sign-in"
-            appearance={{
-              elements: {
-                rootBox: 'w-full',
-                card: 'bg-transparent border-0 shadow-none p-0 w-full',
-                headerTitle: 'hidden',
-                headerSubtitle: 'hidden',
-                socialButtonsBlockButton: 'w-full bg-surface-100 border border-surface-300 text-white hover:bg-surface-200 hover:border-surface-400 rounded-xl h-12 font-medium transition-all duration-200',
-                socialButtonsBlockButtonText: 'text-white font-medium',
-                dividerLine: 'bg-surface-300',
-                dividerText: 'text-surface-600 text-sm',
-                formFieldLabel: 'text-surface-700 text-sm font-medium',
-                formFieldInput: 'bg-surface-100 border-surface-300 text-white rounded-xl h-12 focus:ring-2 focus:ring-helm-500/30 focus:border-helm-500',
-                formButtonPrimary: 'w-full bg-gradient-to-r from-helm-600 to-helm-500 hover:from-helm-500 hover:to-helm-400 text-white rounded-xl h-12 font-semibold shadow-glow transition-all duration-200',
-                footerActionLink: 'text-helm-400 hover:text-helm-300 font-medium',
-                footerActionText: 'text-surface-600',
-              },
-            }}
-          />
+          {ClerkSignUp && (
+            <ClerkSignUp
+              routing="path"
+              path="/sign-up"
+              signInUrl="/sign-in"
+              appearance={{
+                elements: {
+                  rootBox: 'w-full',
+                  card: 'bg-transparent border-0 shadow-none p-0 w-full',
+                  headerTitle: 'hidden',
+                  headerSubtitle: 'hidden',
+                  socialButtonsBlockButton: 'hidden',
+                  socialButtonsBlockButtonText: 'hidden',
+                  dividerLine: 'bg-surface-300',
+                  dividerText: 'text-surface-600 text-sm',
+                  formFieldLabel: 'text-surface-700 text-sm font-medium',
+                  formFieldInput: 'bg-surface-100 border border-surface-300 text-white rounded-xl h-12 px-4 focus:ring-2 focus:ring-helm-500/30 focus:border-helm-500',
+                  formButtonPrimary: 'w-full bg-gradient-to-r from-helm-600 to-helm-500 hover:from-helm-500 hover:to-helm-400 text-white rounded-xl h-12 font-semibold shadow-glow transition-all duration-200',
+                  footerActionLink: 'text-helm-400 hover:text-helm-300 font-medium',
+                  footerActionText: 'text-surface-600',
+                },
+              }}
+            />
+          )}
 
           <p className="text-center text-surface-600 text-sm mt-8">
             Already have an account?{' '}

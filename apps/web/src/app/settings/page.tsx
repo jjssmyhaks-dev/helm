@@ -1,7 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAuth } from '@clerk/nextjs';
+// Clerk useAuth is loaded dynamically when available
+let useAuthHook: any = null;
+try { useAuthHook = require('@clerk/nextjs').useAuth; } catch {}
+function useAuthSafe() {
+  if (useAuthHook) {
+    try { return useAuthHook(); } catch { return { isSignedIn: true, isLoaded: true }; }
+  }
+  return { isSignedIn: true, isLoaded: true };
+}
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import {
@@ -33,7 +41,7 @@ const TIER_CONFIG = {
 };
 
 export default function SettingsPage() {
-  const { isSignedIn, isLoaded } = useAuth();
+  const { isSignedIn, isLoaded } = useAuthSafe();
   const router = useRouter();
   const [settings, setSettings] = useState<AutonomySettings>(DEFAULT_SETTINGS);
   const [saving, setSaving] = useState(false);

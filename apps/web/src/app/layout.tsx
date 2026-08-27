@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { ClerkProvider } from '@clerk/nextjs';
+import { Providers } from '@/components/Providers';
 import { Toaster } from 'sonner';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import './globals.css';
@@ -15,7 +15,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ClerkProvider>
+    <Providers>
       <html lang="en">
         <body className="antialiased">
           <ErrorBoundary>
@@ -36,6 +36,6 @@ export default function RootLayout({
           />
         </body>
       </html>
-    </ClerkProvider>
+    </Providers>
   );
 }

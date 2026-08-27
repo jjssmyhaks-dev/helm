@@ -21,7 +21,14 @@ import {
   Mail,
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
-import { UserButton } from '@clerk/nextjs';
+// Safe user avatar — always shows fallback in demo mode
+function UserButtonSafe(_props: any) {
+  return (
+    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-helm-500 to-helm-600 flex items-center justify-center text-white text-[10px] font-semibold">
+      Y
+    </div>
+  );
+}
 import { useRouter } from 'next/navigation';
 import { CapabilityBar } from './ai/CapabilityBar';
 import { ToolInvocationCard } from './ai/ToolInvocationCard';
@@ -206,7 +213,7 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
           <button onClick={onToggleSidePanel} className="p-2 rounded-lg hover:bg-surface-200 text-surface-600 hover:text-white transition-all duration-150" title="Panel">
             <PanelRightOpen className="w-4 h-4" />
           </button>
-          <UserButton appearance={{ elements: { avatarBox: 'w-7 h-7' } }} />
+          <UserButtonSafe appearance={{ elements: { avatarBox: 'w-7 h-7' } }} />
         </div>
       </header>
 

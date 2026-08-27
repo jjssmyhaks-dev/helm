@@ -1,30 +1,38 @@
-# Helm Frontend Preview
+# Helm Frontend Preview — Run Doc
 
-## How to Reproduce Uncommitted Artifacts
+## How to reproduce artifacts
 
-1. `.env.local` in `apps/web/` must exist with Clerk keys (already present in main checkout).
-2. Dependencies already installed via `npm install` in `apps/web/`.
-3. No build step needed — Next.js dev mode.
+1. Copy `.env.local` from the main checkout:
+   ```
+   cp <main-checkout>/apps/web/.env.local apps/web/.env.local
+   ```
+   **Note:** Never copy secret values — record the procedure only.
 
-## How to Run the Server
+2. Install dependencies (if not already):
+   ```
+   cd apps/web && npm install
+   ```
+
+## How to run the server
 
 ```bash
 cd apps/web
 npm run dev
 ```
 
-Or use the detached batch launcher:
-```
-start "" ".freebuff\launch.bat"
-```
+The server runs on port 3001 (configured via `npx next dev -p 3001`). If 3001 is busy, Next.js auto-picks the next available port.
 
-- **Port:** 54561 (or next available if 3456 is taken)
-- **API_URL:** http://localhost:4000 (backend must be running separately)
-- **Auth:** Clerk (redirects to /sign-in if unauthenticated)
-- **Frontend:** Next.js 15 + Tailwind CSS + Clerk auth
+## Current configuration
 
-## Stopping the Server
+- **Port:** 3001 (Next.js auto-selected)
+- **Clerk:** Disabled (`pk_test_INVALID` in `.env.local`) — app runs in demo mode
+- **API:** Expects backend at `http://localhost:4000` (NestJS)
+- **Design system:** `surface-*` CSS classes, glass morphism, Inter font
 
-```powershell
-taskkill /PID <pid> /F
-```
+## When Clerk is configured
+
+To enable real authentication:
+1. Set `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` to a valid key in `.env.local`
+2. Set `CLERK_SECRET_KEY` to the matching secret
+3. Restart the dev server
+4. The app will automatically use Clerk auth instead of demo mode

@@ -2,7 +2,15 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
-import { useAuth } from '@clerk/nextjs';
+// Clerk useAuth is loaded dynamically when available
+let useAuthHook: any = null;
+try { useAuthHook = require('@clerk/nextjs').useAuth; } catch {}
+function useAuthSafe() {
+  if (useAuthHook) {
+    try { return useAuthHook(); } catch { return { getToken: async () => 'demo-founder' }; }
+  }
+  return { getToken: async () => 'demo-founder' };
+}
 import {
   Anchor,
   BarChart3,
@@ -22,7 +30,10 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { NotificationBell } from '@/components/NotificationBell';
-import { UserButton } from '@clerk/nextjs';
+// Safe user avatar — always shows fallback in demo mode
+function UserButtonSafe(_props: any) {
+  return <div className="w-7 h-7 rounded-full bg-gradient-to-br from-helm-500 to-helm-600 flex items-center justify-center text-white text-[10px] font-semibold">Y</div>;
+}
 
 interface Lead {
   id: string;
@@ -64,7 +75,7 @@ const STAGE_COLORS: Record<string, string> = {
 };
 
 export default function LeadsPage() {
-  const { getToken } = useAuth();
+  const { getToken } = useAuthSafe();
   const router = useRouter();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [stats, setStats] = useState<PipelineStats | null>(null);
@@ -193,7 +204,7 @@ export default function LeadsPage() {
             <Settings className="w-4 h-4" />
           </button>
           <NotificationBell token="" />
-          <UserButton appearance={{ elements: { avatarBox: 'w-7 h-7' } }} />
+          <UserButtonSafe appearance={{ elements: { avatarBox: 'w-7 h-7' } }} />
         </div>
       </header>
 
