@@ -24,6 +24,8 @@ import {
 import { NotificationBell } from './NotificationBell';
 import { ToolSearchModal } from './connectors/ToolSearchModal';
 import HelmAiInput from './HelmAiInput';
+import { HelmCommandMenu } from './HelmCommandMenu';
+import { Kbd } from './ui/kbd';
 
 /* ─── Safe Clerk fallback ─── */
 function UserAvatar() {
@@ -84,6 +86,7 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
   const [isRecording, setIsRecording] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const [showCommandMenu, setShowCommandMenu] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -111,6 +114,18 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
       })));
     } catch { setMessages([]); }
   };
+
+  // Cmd+K command palette
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setShowCommandMenu((prev) => !prev);
+      }
+    };
+    document.addEventListener('keydown', down);
+    return () => document.removeEventListener('keydown', down);
+  }, []);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -198,6 +213,9 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
               <Icon className="w-4 h-4" />
             </motion.button>
           ))}
+          <motion.button onClick={() => setShowCommandMenu(true)} className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-surface-200 text-surface-400 hover:text-surface-600 hover:bg-surface-50 transition-colors text-xs" title="Command menu (Ctrl+K)" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+            <Kbd>Ctrl K</Kbd>
+          </motion.button>
           <motion.button onClick={() => setShowSessions(!showSessions)} className={`p-2 rounded-lg transition-colors ${showSessions ? 'bg-surface-100 text-surface-700' : 'hover:bg-surface-100 text-surface-500 hover:text-surface-700'}`} title="History" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
             <MessageSquare className="w-4 h-4" />
           </motion.button>
@@ -299,7 +317,14 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
         <p className="text-center text-[11px] text-surface-400 mt-2">Helm can make mistakes. Verify important decisions.</p>
       </div>
 
-
+      <HelmCommandMenu
+        open={showCommandMenu}
+        onOpenChange={setShowCommandMenu}
+        onNavigate={(href) => { window.location.href = href; }}
+        onAction={(action) => {
+          if (action === 'logout') onLogout();
+        }}
+      />
     </div>
   );
 }
