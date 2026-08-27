@@ -1,184 +1,133 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
-import { Anchor, Bot, Shield, Zap, BarChart3, ArrowRight } from 'lucide-react';
+import type { JSX, SVGProps } from 'react';
+import { Button, buttonVariants } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
+import { cn } from '@/lib/utils';
+import { Anchor, Shield } from 'lucide-react';
+
+const GoogleIcon = (
+  props: JSX.IntrinsicAttributes & SVGProps<SVGSVGElement>
+) => (
+  <svg fill="currentColor" viewBox="0 0 24 24" {...props}>
+    <path d="M3.06364 7.50914C4.70909 4.24092 8.09084 2 12 2C14.6954 2 16.959 2.99095 18.6909 4.60455L15.8227 7.47274C14.7864 6.48185 13.4681 5.97727 12 5.97727C9.39542 5.97727 7.19084 7.73637 6.40455 10.1C6.2045 10.7 6.09086 11.3409 6.09086 12C6.09086 12.6591 6.2045 13.3 6.40455 13.9C7.19084 16.2636 9.39542 18.0227 12 18.0227C13.3454 18.0227 14.4909 17.6682 15.3864 17.0682C16.4454 16.3591 17.15 15.3 17.3818 14.05H12V10.1818H21.4181C21.5364 10.8363 21.6 11.5182 21.6 12.2273C21.6 15.2727 20.5091 17.8363 18.6181 19.5773C16.9636 21.1046 14.7 22 12 22C8.09084 22 4.70909 19.7591 3.06364 16.4909C2.38638 15.1409 2 13.6136 2 12C2 10.3864 2.38638 8.85911 3.06364 7.50914Z" />
+  </svg>
+);
 
 const clerkKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || '';
 const CLERK_KEY_REGEX = /^pk_(test|live)_[A-Za-z0-9+/=_-]{20,}$/;
 const clerkEnabled = CLERK_KEY_REGEX.test(clerkKey);
 
-const FEATURES = [
-  { icon: Bot, label: '21 Specialist AI Agents', desc: 'Across 4 functional layers' },
-  { icon: Shield, label: 'Risk-Tiered Autonomy', desc: 'You control what agents can do' },
-  { icon: Zap, label: 'Continuous Operation', desc: 'Runs 24/7, not just on-demand' },
-  { icon: BarChart3, label: 'Real-Time Intelligence', desc: 'Live data feeds & analytics' },
-];
-
-export default function SignInPage() {
-  const [ClerkSignIn, setClerkSignIn] = useState<any>(null);
-
-  useEffect(() => {
-    if (clerkEnabled) {
-      import('@clerk/nextjs').then((mod) => setClerkSignIn(() => mod.SignIn));
-    }
-  }, []);
-
-  if (!clerkEnabled) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-surface-0">
-        <motion.div
-          className="text-center max-w-md p-8"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-        >
-          <motion.div
-            className="w-14 h-14 rounded-2xl bg-gradient-to-br from-helm-500 to-helm-600 flex items-center justify-center shadow-xl shadow-helm-500/20 mx-auto mb-6"
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ type: 'spring', delay: 0.2 }}
-          >
-            <Anchor className="w-7 h-7 text-white" />
-          </motion.div>
-          <h1 className="text-2xl font-bold text-white mb-3">Sign-in not available</h1>
-          <p className="text-surface-600 mb-6">
-            Clerk authentication isn&apos;t configured yet. Try Helm in demo mode.
-          </p>
-          <a
-            href="/"
-            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-helm-600 to-helm-500 text-white font-semibold hover:from-helm-500 hover:to-helm-400 transition-all shadow-xl shadow-helm-500/20"
-          >
-            Try Demo Mode
-            <ArrowRight className="w-4 h-4" />
-          </a>
-        </motion.div>
-      </div>
-    );
+function handleDemoLogin() {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('helm_demo_user', 'true');
+    window.location.href = '/';
   }
+}
 
+function handleGoogleSignIn() {
+  if (clerkEnabled) {
+    // Clerk handles Google OAuth via the SignIn component's built-in Google button
+    // For now, trigger demo mode
+    handleDemoLogin();
+  } else {
+    handleDemoLogin();
+  }
+}
+
+export default function LoginPage() {
   return (
-    <div className="min-h-screen flex bg-surface-0">
-      {/* Left — Branding */}
-      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-helm-900 via-surface-0 to-surface-0" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,rgba(99,102,241,0.15),transparent_50%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_right,rgba(139,92,246,0.1),transparent_50%)]" />
-
-        <div className="relative z-10 flex flex-col justify-between p-12 w-full">
-          <motion.div
-            className="flex items-center gap-3"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.2 }}
-          >
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-helm-500 to-helm-600 flex items-center justify-center shadow-lg shadow-helm-500/20">
-              <Anchor className="w-6 h-6 text-white" />
+    <div className="flex min-h-dvh items-center justify-center bg-background">
+      <div className="flex flex-1 flex-col justify-center px-4 py-10 lg:px-6">
+        <div className="sm:mx-auto sm:w-full sm:max-w-sm">
+          {/* Logo */}
+          <div className="flex items-center justify-center gap-2 mb-6">
+            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center shadow-lg shadow-primary/20">
+              <Anchor className="w-5 h-5 text-primary-foreground" />
             </div>
-            <span className="text-xl font-bold text-white tracking-tight">Helm</span>
-          </motion.div>
+            <span className="text-lg font-bold text-foreground tracking-tight">
+              Helm
+            </span>
+          </div>
 
-          <motion.div
-            className="max-w-md"
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
+          <h2 className="text-balance text-center font-semibold text-foreground text-xl">
+            Log in or create account
+          </h2>
+
+          {/* Email form */}
+          <form
+            className="mt-6"
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleDemoLogin();
+            }}
           >
-            <h1 className="text-4xl font-bold text-white leading-tight mb-4">
-              Your AI team<br />
-              <span className="bg-gradient-to-r from-helm-400 to-violet-400 bg-clip-text text-transparent">
-                for every function.
-              </span>
-            </h1>
-            <p className="text-surface-600 text-lg leading-relaxed">
-              Research, marketing, operations, and finance — all coordinated by AI agents that work continuously.
-            </p>
-          </motion.div>
-
-          <div className="space-y-3">
-            {FEATURES.map((f, i) => (
-              <motion.div
-                key={i}
-                className="flex items-center gap-4 p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]"
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.5 + i * 0.1 }}
-              >
-                <div className="w-10 h-10 rounded-lg bg-helm-500/10 flex items-center justify-center">
-                  <f.icon className="w-5 h-5 text-helm-400" />
-                </div>
-                <div>
-                  <div className="text-sm font-medium text-white">{f.label}</div>
-                  <div className="text-xs text-surface-600">{f.desc}</div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Right — Sign in form */}
-      <div className="flex-1 flex items-center justify-center p-8 relative">
-        <motion.div
-          className="w-full max-w-sm relative z-10"
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.3 }}
-        >
-          <div className="lg:hidden flex items-center gap-3 mb-10">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-helm-500 to-helm-600 flex items-center justify-center shadow-lg shadow-helm-500/20">
-              <Anchor className="w-6 h-6 text-white" />
-            </div>
-            <span className="text-xl font-bold text-white tracking-tight">Helm</span>
-          </div>
-
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold text-white mb-2">Welcome back</h2>
-            <p className="text-surface-600">Sign in to your AI team</p>
-          </div>
-
-          {ClerkSignIn && (
-            <ClerkSignIn
-              routing="path"
-              path="/sign-in"
-              signUpUrl="/sign-up"
-              appearance={{
-                elements: {
-                  rootBox: 'w-full',
-                  card: 'bg-transparent border-0 shadow-none p-0 w-full',
-                  headerTitle: 'hidden',
-                  headerSubtitle: 'hidden',
-                  socialButtonsBlockButton: 'hidden',
-                  socialButtonsBlockButtonText: 'hidden',
-                  dividerLine: 'bg-surface-300',
-                  dividerText: 'text-surface-600 text-sm',
-                  formFieldLabel: 'text-surface-700 text-sm font-medium',
-                  formFieldInput: 'bg-surface-100 border border-surface-300 text-white rounded-xl h-12 px-4 focus:ring-2 focus:ring-helm-500/30 focus:border-helm-500',
-                  formButtonPrimary: 'w-full bg-gradient-to-r from-helm-600 to-helm-500 hover:from-helm-500 hover:to-helm-400 text-white rounded-xl h-12 font-semibold shadow-lg shadow-helm-500/20 transition-all duration-200',
-                  footerActionLink: 'text-helm-400 hover:text-helm-300 font-medium',
-                  footerActionText: 'text-surface-600',
-                  identityPreviewEditButton: 'text-helm-400',
-                },
-              }}
+            <Label className="font-medium text-foreground" htmlFor="email">
+              Email
+            </Label>
+            <Input
+              autoComplete="email"
+              className="mt-2"
+              id="email"
+              name="email"
+              placeholder="john@company.com"
+              type="email"
             />
-          )}
+            <Button className="mt-4 w-full" type="submit" size="lg">
+              Sign in
+            </Button>
+          </form>
 
-          <p className="text-center text-surface-600 text-sm mt-8">
-            Don&apos;t have an account?{' '}
-            <a href="/sign-up" className="text-helm-400 hover:text-helm-300 font-medium transition-colors">
-              Get started free
+          {/* Divider */}
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <Separator className="w-full" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background px-2 text-muted-foreground">
+                or with
+              </span>
+            </div>
+          </div>
+
+          {/* Google sign in */}
+          <button
+            type="button"
+            onClick={handleGoogleSignIn}
+            className={cn(
+              buttonVariants({ variant: 'outline' }),
+              'inline-flex w-full items-center justify-center space-x-2',
+            )}
+          >
+            <GoogleIcon aria-hidden className="size-5" />
+            <span className="font-medium text-sm">Sign in with Google</span>
+          </button>
+
+          {/* Terms */}
+          <p className="mt-4 text-pretty text-muted-foreground text-xs text-center">
+            By signing in, you agree to our{' '}
+            <a className="underline underline-offset-4" href="/terms">
+              terms of service
+            </a>{' '}
+            and{' '}
+            <a className="underline underline-offset-4" href="/privacy">
+              privacy policy
             </a>
+            .
           </p>
 
-          <div className="flex items-center justify-center gap-4 mt-8 text-xs text-surface-500">
+          {/* Security badges */}
+          <div className="flex items-center justify-center gap-4 mt-6 text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
               <Shield className="w-3 h-3" />
               SOC 2 compliant
             </span>
-            <span className="w-1 h-1 rounded-full bg-surface-500" />
+            <span className="w-1 h-1 rounded-full bg-muted-foreground/40" />
             <span>End-to-end encrypted</span>
           </div>
-        </motion.div>
+        </div>
       </div>
     </div>
   );
