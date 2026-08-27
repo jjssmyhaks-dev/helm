@@ -76,7 +76,7 @@ export class LLMService {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: options.model || process.env.LLM_MODEL || 'llama-3.3-70b-versatile',
+        model: options.model || process.env.LLM_MODEL || 'openai/gpt-oss-20b',
         messages,
         max_tokens: options.maxTokens || 2048,
         temperature: options.temperature ?? 0.7,
@@ -111,7 +111,7 @@ export class LLMService {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: options.model || process.env.LLM_MODEL || 'llama-3.3-70b-versatile',
+        model: options.model || process.env.LLM_MODEL || 'openai/gpt-oss-20b',
         messages,
         max_tokens: options.maxTokens || 2048,
         temperature: options.temperature ?? 0.7,

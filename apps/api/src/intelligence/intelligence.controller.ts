@@ -6,7 +6,7 @@ import { CompetitorIntelligenceEngine } from './competitor-intelligence.engine.j
 import { SupportTriageEngine } from './support-triage.engine.js';
 
 @ApiTags('Intelligence')
-@Controller('api/intelligence')
+@Controller('intelligence')
 export class IntelligenceController {
   constructor(
     private marketing: MarketingCampaignEngine,

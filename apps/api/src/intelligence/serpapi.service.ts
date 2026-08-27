@@ -10,7 +10,7 @@ export class SerpAPIService {
   private apiKey: string;
 
   constructor() {
-    this.apiKey = process.env.SERPAPI_KEY || '';
+    this.apiKey = process.env.SEARCH_API_KEY || '';
     this.logger.log(`SerpAPI: ${this.apiKey ? 'configured' : 'not configured'}`);
   }
 
@@ -170,7 +170,7 @@ export class SerpAPIService {
       results: [{
         title: `[SerpAPI not configured] Search for: ${query}`,
         link: '',
-        snippet: 'Set SERPAPI_KEY environment variable to enable real web search data.',
+        snippet: 'Set SEARCH_API_KEY environment variable to enable real web search data.',
         position: 1,
       }],
       relatedQuestions: [],

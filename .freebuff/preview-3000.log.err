@@ -7,4 +7,13 @@
    * C:\Users\Ashif\.openclaw-autoclaw\agents\lanework\workspace\lanework-next\helm\pnpm-lock.yaml
    * C:\Users\Ashif\.openclaw-autoclaw\agents\lanework\workspace\lanework-next\package-lock.json
 
-<w> [webpack.cache.PackFileCacheStrategy] Serializing big strings (273kiB) impacts deserialization performance (consider using Buffer instead and decode when needed)
+ ⨯ Failed to start server
+Error: listen EADDRINUSE: address already in use :::3000
+    at <unknown> (Error: listen EADDRINUSE: address already in use :::3000)
+    at new Promise (<anonymous>) {
+  code: 'EADDRINUSE',
+  errno: -4091,
+  syscall: 'listen',
+  address: '::',
+  port: 3000
+}

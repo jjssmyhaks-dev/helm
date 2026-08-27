@@ -95,7 +95,7 @@ export class SchedulerService implements OnModuleInit {
       });
     }
     this.logger.log(`Scheduler initialized with ${DEFAULT_SCHEDULED_JOBS.length} cron jobs`);
-    this.logger.log(`SerpAPI: ${this.serpapi.isConfigured() ? 'configured (live data)' : 'not configured (simulated)'}`);
+    this.logger.log(`SerpAPI: ${this.serpapi?.isConfigured() ? 'configured (live data)' : 'not configured (simulated)'}`);
   }
 
   /**
@@ -249,7 +249,7 @@ export class SchedulerService implements OnModuleInit {
 
   private async runCompetitorScan(founderId: string, context: string): Promise<string> {
     // Use SerpAPI for real data
-    if (this.serpapi.isConfigured()) {
+    if (this.serpapi?.isConfigured()) {
       const industry = context || 'Indian SaaS startup';
       const trends = await this.serpapi.researchMarketTrends(industry, 'India');
 
@@ -283,7 +283,7 @@ export class SchedulerService implements OnModuleInit {
   }
 
   private async runMarketTrendScan(founderId: string, context: string): Promise<string> {
-    if (this.serpapi.isConfigured()) {
+    if (this.serpapi?.isConfigured()) {
       const industry = context || 'Indian startup';
       const [trends, news] = await Promise.all([
         this.serpapi.search(`${industry} market trends India 2025 2026`, { num: 5 }),
@@ -319,7 +319,7 @@ export class SchedulerService implements OnModuleInit {
   }
 
   private async runPricingMonitor(founderId: string, context: string): Promise<string> {
-    if (this.serpapi.isConfigured()) {
+    if (this.serpapi?.isConfigured()) {
       const search = await this.serpapi.search(
         `${context || 'SaaS'} pricing plans comparison India`,
         { num: 5 },

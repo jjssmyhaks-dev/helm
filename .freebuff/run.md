@@ -1,38 +1,30 @@
-# Helm Frontend Preview — Run Doc
+# Helm — Run Doc
 
-## How to reproduce artifacts
+## How to Reproduce Uncommitted Artifacts
 
-1. Copy `.env.local` from the main checkout:
-   ```
-   cp <main-checkout>/apps/web/.env.local apps/web/.env.local
-   ```
-   **Note:** Never copy secret values — record the procedure only.
+1. Copy `.env.local` from the main checkout to `apps/web/.env.local`
+2. Copy `.env` from the main checkout to `apps/api/.env`
+3. Install dependencies: `pnpm install`
 
-2. Install dependencies (if not already):
-   ```
-   cd apps/web && npm install
-   ```
+## How to Run the Server
 
-## How to run the server
+### Frontend (Next.js on port 3001)
 
 ```bash
 cd apps/web
-npm run dev
+npx next dev -p 3001
 ```
 
-The server runs on port 3001 (configured via `npx next dev -p 3001`). If 3001 is busy, Next.js auto-picks the next available port.
+### Backend API (NestJS on port 4000)
 
-## Current configuration
+```bash
+cd apps/api
+npx tsx src/main.ts
+```
 
-- **Port:** 3001 (Next.js auto-selected)
-- **Clerk:** Disabled (`pk_test_INVALID` in `.env.local`) — app runs in demo mode
-- **API:** Expects backend at `http://localhost:4000` (NestJS)
-- **Design system:** `surface-*` CSS classes, glass morphism, Inter font
+## Notes
 
-## When Clerk is configured
-
-To enable real authentication:
-1. Set `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` to a valid key in `.env.local`
-2. Set `CLERK_SECRET_KEY` to the matching secret
-3. Restart the dev server
-4. The app will automatically use Clerk auth instead of demo mode
+- **Prisma 7** requires `@prisma/adapter-pg` driver adapter — PrismaService uses a Proxy to forward model access
+- **Groq models** — use `openai/gpt-oss-20b` (account doesn't have access to Llama models)
+- **Clerk auth** is optional — app runs in demo mode when key is invalid
+- **Database** connects to Supabase via port 6543 (pooler)

@@ -24,6 +24,11 @@ export class SentryFilter extends BaseExceptionFilter {
       this.logger.error(exception.message, exception.stack);
     }
 
-    super.catch(exception, host);
+    // Safely call super — applicationRef may not be set during bootstrap errors
+    try {
+      super.catch(exception, host);
+    } catch {
+      // Swallow errors from the base filter if the app ref is not ready
+    }
   }
 }
