@@ -6,22 +6,13 @@ import { api } from '@/lib/api';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import {
   Anchor,
-  Bot,
   MessageSquare,
   Plus,
   BarChart3,
   Settings,
-  Sparkles,
   Users,
   Mail,
   PanelRightOpen,
-  Search,
-  Globe,
-  FileText,
-  Plug,
-  Mic,
-  MicOff,
-  ArrowUp,
   User,
   Brain,
   Wrench,
@@ -32,6 +23,7 @@ import {
 } from 'lucide-react';
 import { NotificationBell } from './NotificationBell';
 import { ToolSearchModal } from './connectors/ToolSearchModal';
+import HelmAiInput from './HelmAiInput';
 
 /* ─── Safe Clerk fallback ─── */
 function UserAvatar() {
@@ -83,13 +75,6 @@ const SUGGESTIONS = [
   { text: 'Analyze my SEO performance', icon: '📊' },
 ];
 
-const CAPABILITIES = [
-  { id: 'search', label: 'Web Search', icon: <Search className="w-3 h-3" />, color: 'text-blue-500' },
-  { id: 'research', label: 'Deep Research', icon: <Globe className="w-3 h-3" />, color: 'text-violet-500' },
-  { id: 'draft', label: 'Draft', icon: <FileText className="w-3 h-3" />, color: 'text-amber-500' },
-  { id: 'tools', label: 'Connect Tool', icon: <Plug className="w-3 h-3" />, color: 'text-emerald-500' },
-];
-
 /* ─── Main ChatPane ─── */
 export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel, onLogout }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -98,8 +83,6 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
   const [sending, setSending] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [showSessions, setShowSessions] = useState(false);
-  const [showToolSearch, setShowToolSearch] = useState(false);
-  const [activeCaps, setActiveCaps] = useState<Set<string>>(new Set());
   const [showScrollBtn, setShowScrollBtn] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -186,10 +169,6 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
       setIsRecording(true);
       setTimeout(() => { setIsRecording(false); stream.getTracks().forEach((t) => t.stop()); }, 5000);
     } catch {}
-  };
-
-  const toggleCap = (id: string) => {
-    setActiveCaps((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   };
 
   const isEmpty = messages.length === 0;
@@ -309,41 +288,18 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
 
       {/* ─── Prompt Input ─── */}
       <div className="w-full max-w-[768px] mx-auto px-4 pb-6 pt-2">
-        <motion.div className={`relative rounded-2xl border transition-all duration-300 ${input ? 'border-surface-300 shadow-md' : 'border-surface-200'} bg-white`} layout>
-          {/* Capability bar */}
-          <div className="flex items-center gap-1 px-3 pt-3 pb-1">
-            {CAPABILITIES.map((cap) => (
-              <motion.button key={cap.id} onClick={() => toggleCap(cap.id)} className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs transition-all ${activeCaps.has(cap.id) ? 'bg-surface-100 text-surface-700 border border-surface-200' : 'text-surface-400 hover:text-surface-600 hover:bg-surface-50 border border-transparent'}`} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                {cap.icon}
-                {cap.label}
-              </motion.button>
-            ))}
-          </div>
-
-          {/* Textarea */}
-          <div className="flex items-end gap-2 px-3 py-2">
-            <textarea ref={textareaRef} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown} placeholder="Message Helm..." rows={1} className="flex-1 resize-none bg-transparent text-surface-800 placeholder-surface-400 text-[14px] leading-relaxed focus:outline-none py-1.5" style={{ minHeight: '24px', maxHeight: '200px' }} />
-          </div>
-
-          {/* Bottom bar */}
-          <div className="flex items-center justify-between px-3 pb-2.5">
-            <div className="flex items-center gap-1">
-              <motion.button className="p-1.5 rounded-lg text-surface-400 hover:text-surface-600 hover:bg-surface-100 transition-colors" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} title="Attach file">
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
-              </motion.button>
-              <motion.button onClick={toggleRecording} className={`p-1.5 rounded-lg transition-colors ${isRecording ? 'text-red-500 bg-red-50' : 'text-surface-400 hover:text-surface-600 hover:bg-surface-100'}`} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} animate={isRecording ? { scale: [1, 1.1, 1] } : {}} transition={isRecording ? { duration: 1, repeat: Infinity } : {}} title={isRecording ? 'Stop' : 'Voice'}>
-                {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-              </motion.button>
-            </div>
-            <motion.button onClick={sendMessage} disabled={!input.trim() || sending} className={`p-2 rounded-xl transition-all ${input.trim() && !sending ? 'bg-surface-800 text-white hover:bg-surface-700 shadow-md' : 'bg-surface-100 text-surface-400 cursor-not-allowed'}`} whileHover={input.trim() && !sending ? { scale: 1.05 } : {}} whileTap={input.trim() && !sending ? { scale: 0.95 } : {}}>
-              <ArrowUp className="w-4 h-4" />
-            </motion.button>
-          </div>
-        </motion.div>
+        <HelmAiInput
+          value={input}
+          onChange={setInput}
+          onSend={sendMessage}
+          disabled={sending}
+          isRecording={isRecording}
+          onToggleRecording={toggleRecording}
+        />
         <p className="text-center text-[11px] text-surface-400 mt-2">Helm can make mistakes. Verify important decisions.</p>
       </div>
 
-      <ToolSearchModal open={showToolSearch} onClose={() => setShowToolSearch(false)} />
+
     </div>
   );
 }
