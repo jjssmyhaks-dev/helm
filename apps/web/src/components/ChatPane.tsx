@@ -27,6 +27,7 @@ import HelmAiInput from './HelmAiInput';
 import { HelmCommandMenu } from './HelmCommandMenu';
 import { Kbd } from './ui/kbd';
 import HelmFileUpload from './HelmFileUpload';
+import { HelmOnboardingChecklist } from './HelmOnboardingChecklist';
 
 /* ─── Safe Clerk fallback ─── */
 function UserAvatar() {
@@ -275,6 +276,13 @@ export function ChatPane({ token, sessionId, onSessionChange, onToggleSidePanel,
                     <span className="text-sm text-surface-600 group-hover:text-surface-800 transition-colors">{s.text}</span>
                   </motion.button>
                 ))}
+              </div>
+
+              {/* Onboarding Checklist */}
+              <div className="mt-8 flex justify-center">
+                <HelmOnboardingChecklist
+                  onNavigate={(href) => { window.location.href = href; }}
+                />
               </div>
             </div>
           ) : (
