@@ -23,7 +23,8 @@ const clerkEnabled = CLERK_KEY_REGEX.test(clerkKey);
 function handleDemoSignup() {
   if (typeof window !== 'undefined') {
     localStorage.setItem('helm_demo_user', 'true');
-    window.location.href = '/';
+    const onboarded = localStorage.getItem('helm_onboarded');
+    window.location.href = onboarded ? '/' : '/onboarding';
   }
 }
 
